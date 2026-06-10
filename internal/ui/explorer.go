@@ -90,7 +90,7 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 		return e.handleKey(msg)
 	case tea.MouseMsg:
 		if e.mode == modeTree {
-			e.handleMouse(msg)
+			return e.handleMouse(msg)
 		}
 		return e, nil
 	}
@@ -237,7 +237,21 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 	return e, nil
 }
 
-func (e *explorer) handleMouse(msg tea.MouseMsg) {
+// window returns the first visible row index and the row capacity, matching
+// what View renders.
+func (e explorer) window() (start, maxRows int) {
+	vis := e.tree.visible()
+	maxRows = e.height - 2
+	if maxRows < 1 {
+		maxRows = len(vis)
+	}
+	if e.tree.cursor >= maxRows {
+		start = e.tree.cursor - maxRows + 1
+	}
+	return start, maxRows
+}
+
+func (e explorer) handleMouse(msg tea.MouseMsg) (explorer, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		e.tree.moveUp()
@@ -245,13 +259,15 @@ func (e *explorer) handleMouse(msg tea.MouseMsg) {
 		e.tree.moveDown()
 	case tea.MouseButtonLeft:
 		if msg.Action != tea.MouseActionPress {
-			return
+			return e, nil
 		}
+		start, maxRows := e.window()
 		idx := msg.Y - 1 // row 0 is the title bar
-		if idx >= 0 && idx < len(e.tree.visible()) {
-			e.tree.cursor = idx
+		if idx >= 0 && idx < maxRows && start+idx < len(e.tree.visible()) {
+			e.tree.cursor = start + idx
 		}
 	}
+	return e, nil
 }
 
 func (e explorer) View() string {
@@ -272,14 +288,7 @@ func (e explorer) View() string {
 	}
 
 	vis := e.tree.visible()
-	maxRows := e.height - 2
-	if maxRows < 1 {
-		maxRows = len(vis)
-	}
-	start := 0
-	if e.tree.cursor >= maxRows {
-		start = e.tree.cursor - maxRows + 1
-	}
+	start, maxRows := e.window()
 	for i := start; i < len(vis) && i-start < maxRows; i++ {
 		b.WriteString(e.renderNode(vis[i], i == e.tree.cursor) + "\n")
 	}

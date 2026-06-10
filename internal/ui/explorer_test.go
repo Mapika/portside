@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -160,5 +161,35 @@ func TestExplorerViewRendersTree(t *testing.T) {
 	v := e.View()
 	if !strings.Contains(v, "docs") || !strings.Contains(v, "a.txt") {
 		t.Fatalf("view missing entries:\n%s", v)
+	}
+}
+
+func TestExplorerMouseClickOnScrolledTree(t *testing.T) {
+	f := &fakeFS{name: "local", listings: map[string][]fs.Entry{"/root": {}}}
+	for i := 0; i < 20; i++ {
+		f.listings["/root"] = append(f.listings["/root"], fs.Entry{
+			Name: fmt.Sprintf("f%02d.txt", i),
+			Path: fmt.Sprintf("/root/f%02d.txt", i),
+		})
+	}
+	e := newExplorer(f, "/root")
+	e, _ = e.Update(e.Init()())
+	e.height = 12 // maxRows = 10
+
+	// scroll down to row 15 → window starts at 6
+	for i := 0; i < 15; i++ {
+		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if e.tree.cursor != 15 {
+		t.Fatalf("setup: want cursor 15, got %d", e.tree.cursor)
+	}
+
+	// click the first content row (Y=1) → should select vis[6], not vis[0]
+	e, _ = e.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, Y: 1})
+	if e.tree.cursor != 6 {
+		t.Fatalf("want cursor 6 after click, got %d", e.tree.cursor)
+	}
+	if e.tree.current().entry.Name != "f06.txt" {
+		t.Fatalf("want f06.txt selected, got %s", e.tree.current().entry.Name)
 	}
 }
