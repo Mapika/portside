@@ -54,7 +54,7 @@ func (a App) Init() tea.Cmd {
 	if a.initialHost != "" {
 		return tea.Batch(
 			statusCmd("connecting to "+a.initialHost+"…", false),
-			connectCmd(a.initialHost),
+			connectCmd(a.initialHost, ""),
 		)
 	}
 	return a.ex.Init()

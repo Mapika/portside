@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -18,6 +19,9 @@ type Conn struct {
 	Host   string
 	Client *ssh.Client
 	SFTP   *sftp.Client
+	// hops holds intermediate hop clients that must be closed in reverse order
+	// when the connection is torn down.
+	hops []*ssh.Client
 }
 
 func (c *Conn) Close() error {
@@ -29,6 +33,12 @@ func (c *Conn) Close() error {
 	}
 	if c.Client != nil {
 		if err := c.Client.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	// close hops in reverse order (outermost first)
+	for i := len(c.hops) - 1; i >= 0; i-- {
+		if err := c.hops[i].Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -56,25 +66,38 @@ func Dial(host, addr, usr string, auth []ssh.AuthMethod, hk ssh.HostKeyCallback)
 }
 
 // Connect resolves an alias from the user's ssh config and dials it using
-// the SSH agent and any unencrypted private keys.
-func Connect(alias string) (*Conn, error) {
+// the SSH agent and any unencrypted private keys. If secret is non-empty it
+// also tries encrypted keys (decrypted with the secret), password auth, and
+// keyboard-interactive auth.
+func Connect(alias, secret string) (*Conn, error) {
 	r, err := LoadConfig(DefaultConfigPath())
 	if err != nil {
 		return nil, err
 	}
 	p := r.Resolve(alias)
-	auth, closers := AuthMethods(p)
+	auth, closers := AuthMethods(p, secret)
 	conn, err := Dial(alias, p.Addr, p.User, auth, hostKeyCallback())
-	for _, c := range closers {
-		c.Close()
-	}
+	closeAll(closers)
 	return conn, err
 }
 
+// IsAuthErr reports whether err is an SSH authentication failure (as opposed
+// to a network or other error).
+func IsAuthErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unable to authenticate") ||
+		strings.Contains(msg, "no supported methods remain")
+}
+
 // AuthMethods builds auth from the SSH agent (if running) and the key files
-// in p. Encrypted key files are skipped — use the agent for those. The
-// returned closers must be closed once dialing has completed.
-func AuthMethods(p Params) ([]ssh.AuthMethod, []io.Closer) {
+// in p. When secret is non-empty, encrypted key files are also decrypted
+// using the secret, and password + keyboard-interactive methods are appended.
+// Unencrypted keys that fail to parse are still skipped. The returned closers
+// must be closed once dialing has completed.
+func AuthMethods(p Params, secret string) ([]ssh.AuthMethod, []io.Closer) {
 	var methods []ssh.AuthMethod
 	var closers []io.Closer
 	if conn, err := dialAgent(); err == nil {
@@ -87,8 +110,16 @@ func AuthMethods(p Params) ([]ssh.AuthMethod, []io.Closer) {
 		if err != nil {
 			continue
 		}
+		// try plain (unencrypted) parse first
 		s, err := ssh.ParsePrivateKey(data)
 		if err != nil {
+			// if a secret is provided, attempt to decrypt the key
+			if secret != "" {
+				s2, err2 := ssh.ParsePrivateKeyWithPassphrase(data, []byte(secret))
+				if err2 == nil {
+					signers = append(signers, s2)
+				}
+			}
 			continue
 		}
 		signers = append(signers, s)
@@ -96,7 +127,24 @@ func AuthMethods(p Params) ([]ssh.AuthMethod, []io.Closer) {
 	if len(signers) > 0 {
 		methods = append(methods, ssh.PublicKeys(signers...))
 	}
+	if secret != "" {
+		methods = append(methods, ssh.Password(secret))
+		methods = append(methods, ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range questions {
+				answers[i] = secret
+			}
+			return answers, nil
+		}))
+	}
 	return methods, closers
+}
+
+// closeAll closes every closer, discarding errors.
+func closeAll(closers []io.Closer) {
+	for _, c := range closers {
+		c.Close()
+	}
 }
 
 func hostKeyCallback() ssh.HostKeyCallback {

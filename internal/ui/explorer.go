@@ -163,7 +163,7 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 			e.loading = true
 			return e, tea.Batch(
 				statusCmd("connecting to "+alias+"…", false),
-				connectCmd(alias),
+				connectCmd(alias, ""),
 			)
 		case "esc":
 			e.mode = modeTree
@@ -230,7 +230,7 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 			e.loading = true
 			return e, tea.Batch(
 				statusCmd("reconnecting to "+e.fsys.Name()+"…", false),
-				connectCmd(e.fsys.Name()),
+				connectCmd(e.fsys.Name(), ""),
 			)
 		}
 	}

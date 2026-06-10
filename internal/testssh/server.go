@@ -15,6 +15,22 @@ import (
 // down automatically when the test finishes.
 func Start(t *testing.T) string {
 	t.Helper()
+	return startServer(t, nil)
+}
+
+// StartWithPassword launches a server that requires password authentication
+// accepting exactly the given password. It returns the address (host:port).
+// The server is shut down automatically when the test finishes.
+func StartWithPassword(t *testing.T, password string) string {
+	t.Helper()
+	handler := func(ctx gssh.Context, pass string) bool {
+		return pass == password
+	}
+	return startServer(t, handler)
+}
+
+func startServer(t *testing.T, pwHandler gssh.PasswordHandler) string {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +53,7 @@ func Start(t *testing.T) string {
 				server.Serve()
 			},
 		},
+		PasswordHandler: pwHandler,
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })

@@ -20,9 +20,10 @@ type childrenLoadedMsg struct {
 }
 
 type connectResultMsg struct {
-	host string
-	conn *sshconn.Conn
-	err  error
+	host       string
+	conn       *sshconn.Conn
+	err        error
+	authFailed bool
 }
 
 type downloadResultMsg struct {
@@ -53,10 +54,10 @@ func loadChildrenCmd(fsys fs.Filesystem, n *node) tea.Cmd {
 	}
 }
 
-func connectCmd(alias string) tea.Cmd {
+func connectCmd(alias, secret string) tea.Cmd {
 	return func() tea.Msg {
-		conn, err := sshconn.Connect(alias)
-		return connectResultMsg{host: alias, conn: conn, err: err}
+		conn, err := sshconn.Connect(alias, secret)
+		return connectResultMsg{host: alias, conn: conn, err: err, authFailed: sshconn.IsAuthErr(err)}
 	}
 }
 
