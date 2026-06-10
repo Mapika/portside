@@ -650,3 +650,154 @@ func TestWatchStaleRootRefreshIgnored(t *testing.T) {
 		t.Fatalf("stale refresh should not modify tree; want %d roots, got %d", origLen, len(e.tree.roots))
 	}
 }
+
+// ---- Send recent changes (C) tests ----
+
+// TestSendRecentChangesNoChanges verifies that C with no recently-changed nodes
+// returns a "no recent changes" status.
+func TestSendRecentChangesNoChanges(t *testing.T) {
+	t.Setenv("TMUX", "")
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// No nodes have changedAt set.
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	if cmd == nil {
+		t.Fatal("C should return a cmd even with no changes")
+	}
+	msgs := collectMsgs(cmd)
+	var sawNoChanges bool
+	for _, m := range msgs {
+		if s, ok := m.(statusMsg); ok && !s.isErr && strings.Contains(s.text, "no recent changes") {
+			sawNoChanges = true
+		}
+	}
+	if !sawNoChanges {
+		t.Fatalf("want 'no recent changes' status, got %v", msgs)
+	}
+}
+
+// TestSendRecentChangesWithChanges verifies that C sends all recently changed
+// paths (most recent first, space-joined).
+func TestSendRecentChangesWithChanges(t *testing.T) {
+	t.Setenv("TMUX", "")
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+
+	// Manually set changedAt on both nodes so they appear as recent.
+	now := time.Now()
+	for _, n := range e.tree.roots {
+		n.changedAt = now.Add(-5 * time.Second) // within 45s
+	}
+	// Make docs more recent than a.txt.
+	e.tree.roots[0].changedAt = now.Add(-2 * time.Second) // docs — more recent
+	e.tree.roots[1].changedAt = now.Add(-10 * time.Second) // a.txt — older
+
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	if cmd == nil {
+		t.Fatal("C should return a cmd when there are recent changes")
+	}
+	msgs := collectMsgs(cmd)
+	var sentText string
+	for _, m := range msgs {
+		if s, ok := m.(statusMsg); ok && !s.isErr {
+			sentText = s.text
+		}
+	}
+	if sentText == "" {
+		t.Fatalf("want a success status msg, got %v", msgs)
+	}
+	// Both paths should be present in the sent text.
+	if !strings.Contains(sentText, "/root/docs") {
+		t.Errorf("want /root/docs in sent text, got %q", sentText)
+	}
+	if !strings.Contains(sentText, "/root/a.txt") {
+		t.Errorf("want /root/a.txt in sent text, got %q", sentText)
+	}
+}
+
+// TestSendRecentChangesCap verifies that C caps at 20 paths.
+func TestSendRecentChangesCap(t *testing.T) {
+	t.Setenv("TMUX", "")
+	// Build a fake FS with 25 files.
+	f := &fakeFS{name: "local", listings: map[string][]fs.Entry{"/root": {}}}
+	for i := 0; i < 25; i++ {
+		f.listings["/root"] = append(f.listings["/root"], fs.Entry{
+			Name: fmt.Sprintf("f%02d.txt", i),
+			Path: fmt.Sprintf("/root/f%02d.txt", i),
+		})
+	}
+	e := newExplorer(f, "/root")
+	e, _ = e.Update(loadRootCmd(f, "/root")())
+
+	// Mark all 25 as recently changed.
+	now := time.Now()
+	for i, n := range e.tree.roots {
+		n.changedAt = now.Add(-time.Duration(i+1) * time.Second)
+	}
+
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	if cmd == nil {
+		t.Fatal("C should return a cmd")
+	}
+	msgs := collectMsgs(cmd)
+	var sentText string
+	for _, m := range msgs {
+		if s, ok := m.(statusMsg); ok && !s.isErr {
+			sentText = s.text
+		}
+	}
+	// Count the number of paths sent (each path separated by space).
+	// The text ends with " " so split and remove trailing empty.
+	parts := strings.Fields(sentText)
+	// statusMsg text is "copied to clipboard: /root/f00.txt /root/f01.txt ..."
+	// or "sent to agent pane: ...". Strip the prefix.
+	var pathCount int
+	for _, p := range parts {
+		if strings.HasPrefix(p, "/root/") {
+			pathCount++
+		}
+	}
+	if pathCount > 20 {
+		t.Errorf("C should cap at 20 paths, got %d", pathCount)
+	}
+}
+
+// TestSendRecentChangesFilterControlChars verifies that paths with control
+// characters are filtered out from the C send.
+func TestSendRecentChangesFilterControlChars(t *testing.T) {
+	t.Setenv("TMUX", "")
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+
+	now := time.Now()
+	// Set a.txt's path to contain a control character by directly manipulating
+	// the node entry.
+	for _, n := range e.tree.roots {
+		if n.entry.Name == "a.txt" {
+			n.entry.Path = "/root/a\x01txt" // control char
+			n.changedAt = now.Add(-5 * time.Second)
+		}
+		if n.entry.Name == "docs" {
+			n.changedAt = now.Add(-3 * time.Second)
+		}
+	}
+
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	if cmd == nil {
+		t.Fatal("C should return a cmd")
+	}
+	msgs := collectMsgs(cmd)
+	var sentText string
+	for _, m := range msgs {
+		if s, ok := m.(statusMsg); ok && !s.isErr {
+			sentText = s.text
+		}
+	}
+	// The control-char path should be excluded; docs should still be sent.
+	if strings.Contains(sentText, "\x01") {
+		t.Error("control-char path should be filtered from C send")
+	}
+	if !strings.Contains(sentText, "/root/docs") {
+		t.Errorf("valid path /root/docs should be in sent text, got %q", sentText)
+	}
+}

@@ -464,7 +464,9 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 		if n == nil {
 			break
 		}
-		return e, sendToClaudeCmd(n.entry.Path)
+		return e, sendToAgentCmd(n.entry.Path + " ")
+	case "C":
+		return e.sendRecentChanges()
 	case "w":
 		e.watch = !e.watch
 		if e.watch {
@@ -542,6 +544,28 @@ func (e explorer) showHosts() (explorer, tea.Cmd) {
 	e.hostCursor = 0
 	e.mode = modeHosts
 	return e, nil
+}
+
+// sendRecentChanges collects recently changed paths (up to 20, most recent
+// first), filters out paths with control characters, and sends them space-
+// joined to the agent pane. Returns "no recent changes" if there are none.
+func (e explorer) sendRecentChanges() (explorer, tea.Cmd) {
+	const maxPaths = 20
+	nodes := e.tree.recentChanges(changedHighlight, time.Now())
+	if len(nodes) > maxPaths {
+		nodes = nodes[:maxPaths]
+	}
+	var paths []string
+	for _, n := range nodes {
+		if !hasControlChar(n.entry.Path) {
+			paths = append(paths, n.entry.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return e, statusCmd("no recent changes", false)
+	}
+	text := strings.Join(paths, " ") + " "
+	return e, sendToAgentCmd(text)
 }
 
 // window returns the first visible row index and the row capacity, matching

@@ -9,27 +9,36 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// sendToClaudeCmd hands the selected path to the neighboring Claude pane:
+// hasControlChar reports whether text contains any control character (< 0x20
+// or == 0x7f). A path with a control character would press Enter or corrupt
+// input in the target pane.
+func hasControlChar(text string) bool {
+	for _, c := range text {
+		if c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// sendToAgentCmd hands the given text to the neighboring agent pane:
 // inside tmux it is typed into the pane to the right; otherwise it is
 // copied to the clipboard via OSC 52.
-func sendToClaudeCmd(path string) tea.Cmd {
+func sendToAgentCmd(text string) tea.Cmd {
 	return func() tea.Msg {
-		// a remote-controlled filename with a newline would press Enter in
-		// the target pane (and other control bytes corrupt its input) —
-		// refuse anything non-printable
-		for _, c := range path {
-			if c < 0x20 || c == 0x7f {
-				return statusMsg{text: "refusing to send a path with control characters", isErr: true}
-			}
+		// Refuse anything non-printable (a control byte would press Enter or
+		// corrupt the target pane's input).
+		if hasControlChar(text) {
+			return statusMsg{text: "refusing to send a path with control characters", isErr: true}
 		}
 		if os.Getenv("TMUX") != "" {
-			err := exec.Command("tmux", "send-keys", "-t", "{right-of}", "-l", "--", path+" ").Run()
+			err := exec.Command("tmux", "send-keys", "-t", "{right-of}", "-l", "--", text).Run()
 			if err != nil {
 				return statusMsg{text: "send to agent pane: " + err.Error(), isErr: true}
 			}
-			return statusMsg{text: "sent to agent pane: " + path, isErr: false}
+			return statusMsg{text: "sent to agent pane: " + text, isErr: false}
 		}
-		fmt.Fprint(os.Stderr, osc52.New(path))
-		return statusMsg{text: "copied to clipboard: " + path, isErr: false}
+		fmt.Fprint(os.Stderr, osc52.New(text))
+		return statusMsg{text: "copied to clipboard: " + text, isErr: false}
 	}
 }

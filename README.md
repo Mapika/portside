@@ -6,6 +6,17 @@ pulls files down to your machine with one key, and forwards ports like VS
 Code's Ports panel. It's built to sit in a split next to an AI agent — the
 `work` command opens both panes at once — but it's useful on its own too.
 
+## Watching your agent work
+
+portside can watch the files an agent is touching in real time. With watch
+mode on (default), the tree polls every 3 seconds and highlights any file
+that changed in the last 45 seconds with an orange dot marker. Modified
+files are coloured yellow and untracked files green when the directory is
+inside a git repository (no extra tooling required on the server — portside
+runs `git status` itself). Press `w` to toggle watch on or off, and press
+`C` to type the list of recently changed paths straight into the agent pane
+next door, so you can ask about the files it just edited without copy-pasting.
+
 ![demo](demo/demo.gif)
 
 I made this because my actual workday was: a terminal with an AI session on a
@@ -71,6 +82,8 @@ Windows); the `save to:` prompt remembers what you last typed.
 | `D` | delete selected file/folder (recursive; prompts y/N) |
 | `n` | create a new folder inside the selected directory |
 | `c` | send the selected path to the agent pane (types it in; clipboard fallback if no tmux) |
+| `C` | send all recently changed paths (last 45s, most recent first) to the agent pane |
+| `w` | toggle watch mode (auto-refresh every 3s with change highlights) on/off |
 | `r` | refresh |
 | `.` | toggle hidden files |
 | `R` | reconnect current host |
