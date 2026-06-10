@@ -63,7 +63,11 @@ Windows); the `save to:` prompt remembers what you last typed.
 | `:` or `Ctrl+L` | type a path to jump to |
 | `Ctrl+H` | switch host (local / ~/.ssh/config hosts) |
 | `d` | download selected file/folder |
-| `c` | send the selected path to the Claude pane (clipboard if no tmux) |
+| `u` | upload a local file/folder into the selected directory |
+| `m` | rename selected file/folder |
+| `D` | delete selected file/folder (recursive; prompts y/N) |
+| `n` | create a new folder inside the selected directory |
+| `c` | send the selected path to the agent pane (clipboard if no tmux) |
 | `r` | refresh |
 | `.` | toggle hidden files |
 | `R` | reconnect current host |

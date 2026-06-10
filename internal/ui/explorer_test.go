@@ -231,3 +231,208 @@ func TestExplorerMouseClickOnScrolledTree(t *testing.T) {
 		t.Fatalf("want f06.txt selected, got %s", e.tree.current().entry.Name)
 	}
 }
+
+// ---- File operation mode tests ----
+
+func TestExplorerUploadMode(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// cursor is on "docs" (a dir) — u should enter modeUpload
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if e.mode != modeUpload {
+		t.Fatalf("want modeUpload after 'u', got %v", e.mode)
+	}
+	// type a path and press enter
+	e.opInput.SetValue("/tmp/file.txt")
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if e.mode == modeUpload {
+		t.Fatal("should have left modeUpload after enter")
+	}
+	msgs := collectMsgs(cmd)
+	var gotOp bool
+	for _, m := range msgs {
+		if _, ok := m.(fileOpResultMsg); ok {
+			gotOp = true
+		}
+	}
+	if !gotOp {
+		t.Fatalf("want fileOpResultMsg, got %v", msgs)
+	}
+	if len(f.ops) == 0 || f.ops[0][:6] != "upload" {
+		t.Fatalf("want upload op recorded, got %v", f.ops)
+	}
+}
+
+func TestExplorerUploadCancelWithEsc(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if e.mode != modeUpload {
+		t.Fatal("want modeUpload")
+	}
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	if e.mode != modeTree {
+		t.Fatalf("want modeTree after esc, got %v", e.mode)
+	}
+	if len(f.ops) != 0 {
+		t.Fatal("esc should not perform any op")
+	}
+}
+
+func TestExplorerRenameMode(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// cursor on "docs"
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	if e.mode != modeRename {
+		t.Fatalf("want modeRename after 'm', got %v", e.mode)
+	}
+	// input should be prefilled with the current name
+	if e.opInput.Value() != "docs" {
+		t.Fatalf("want opInput prefilled with 'docs', got %q", e.opInput.Value())
+	}
+	e.opInput.SetValue("newname")
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if e.mode == modeRename {
+		t.Fatal("should have left modeRename after enter")
+	}
+	msgs := collectMsgs(cmd)
+	var gotOp bool
+	for _, m := range msgs {
+		if _, ok := m.(fileOpResultMsg); ok {
+			gotOp = true
+		}
+	}
+	if !gotOp {
+		t.Fatalf("want fileOpResultMsg, got %v", msgs)
+	}
+	if len(f.ops) == 0 || f.ops[0][:6] != "rename" {
+		t.Fatalf("want rename op recorded, got %v", f.ops)
+	}
+}
+
+func TestExplorerDeleteConfirmY(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// D on "docs"
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if e.mode != modeDelete {
+		t.Fatalf("want modeDelete after 'D', got %v", e.mode)
+	}
+	// confirm with "y"
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if e.mode == modeDelete {
+		t.Fatal("should have left modeDelete after y")
+	}
+	msgs := collectMsgs(cmd)
+	var gotOp bool
+	for _, m := range msgs {
+		if _, ok := m.(fileOpResultMsg); ok {
+			gotOp = true
+		}
+	}
+	if !gotOp {
+		t.Fatalf("want fileOpResultMsg, got %v", msgs)
+	}
+	if len(f.ops) == 0 || f.ops[0][:6] != "remove" {
+		t.Fatalf("want remove op recorded, got %v", f.ops)
+	}
+}
+
+func TestExplorerDeleteConfirmReject(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if e.mode != modeDelete {
+		t.Fatal("want modeDelete")
+	}
+	// any key other than y should cancel
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if e.mode != modeTree {
+		t.Fatalf("want modeTree after rejection, got %v", e.mode)
+	}
+	if cmd != nil {
+		for _, m := range collectMsgs(cmd) {
+			if _, ok := m.(fileOpResultMsg); ok {
+				t.Fatal("rejection should not produce a fileOpResultMsg")
+			}
+		}
+	}
+	if len(f.ops) != 0 {
+		t.Fatal("rejection should not call remove")
+	}
+}
+
+func TestExplorerMkdirMode(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if e.mode != modeMkdir {
+		t.Fatalf("want modeMkdir after 'n', got %v", e.mode)
+	}
+	e.opInput.SetValue("myfolder")
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if e.mode == modeMkdir {
+		t.Fatal("should have left modeMkdir after enter")
+	}
+	msgs := collectMsgs(cmd)
+	var gotOp bool
+	for _, m := range msgs {
+		if _, ok := m.(fileOpResultMsg); ok {
+			gotOp = true
+		}
+	}
+	if !gotOp {
+		t.Fatalf("want fileOpResultMsg, got %v", msgs)
+	}
+	if len(f.ops) == 0 || f.ops[0][:5] != "mkdir" {
+		t.Fatalf("want mkdir op recorded, got %v", f.ops)
+	}
+}
+
+func TestExplorerOpReloadsAfterSuccess(t *testing.T) {
+	f := newTestFS()
+	// expand docs first so it has children loaded
+	e := loadedExplorer(t, f)
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter}) // expand docs
+	e, _ = e.Update(collectMsgs(cmd)[0])               // apply childrenLoadedMsg
+	// docs is now expanded; its child b.md is at index 1
+	docsNode := e.tree.roots[0]
+	if !docsNode.loaded {
+		t.Fatal("docs should be loaded")
+	}
+	// now rename docs
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	e.opInput.SetValue("docs2")
+	e, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// execute the fileOpResultMsg
+	for _, m := range collectMsgs(cmd) {
+		e, _ = e.Update(m)
+	}
+	// after success, should have reloaded root listing (docs has nil parent)
+	if e.rootPath != "/root" {
+		t.Fatalf("expected root reload, rootPath=%s", e.rootPath)
+	}
+}
+
+func TestExplorerOpError(t *testing.T) {
+	f := newTestFS()
+	f.opErr = errors.New("permission denied")
+	e := loadedExplorer(t, f)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	e.opInput.SetValue("newname")
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	var sawErr bool
+	for _, m := range collectMsgs(cmd) {
+		var cmd2 tea.Cmd
+		e, cmd2 = e.Update(m)
+		for _, m2 := range collectMsgs(cmd2) {
+			if s, ok := m2.(statusMsg); ok && s.isErr {
+				sawErr = true
+			}
+		}
+	}
+	if !sawErr {
+		t.Fatal("want error status msg on op failure")
+	}
+}

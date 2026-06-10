@@ -31,6 +31,19 @@ type downloadResultMsg struct {
 	err  error
 }
 
+type fileOpResultMsg struct {
+	parent *node  // nil means reload from root
+	verb   string // "uploaded", "renamed", "deleted", "created"
+	name   string // name of the entry for status messages
+	err    error
+}
+
+func fileOpCmd(fsys fs.Filesystem, verb, name string, parent *node, fn func() error) tea.Cmd {
+	return func() tea.Msg {
+		return fileOpResultMsg{parent: parent, verb: verb, name: name, err: fn()}
+	}
+}
+
 type statusMsg struct {
 	text  string
 	isErr bool

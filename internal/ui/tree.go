@@ -13,6 +13,7 @@ type node struct {
 	expanded bool
 	loaded   bool
 	children []*node
+	parent   *node // nil for root nodes
 }
 
 // tree is the explorer's data structure: lazily-loaded nodes plus a
@@ -27,22 +28,22 @@ type tree struct {
 func newTree() *tree { return &tree{} }
 
 func (t *tree) setRoot(entries []fs.Entry) {
-	t.roots = makeNodes(entries, 0)
+	t.roots = makeNodes(entries, 0, nil)
 	t.cursor = 0
 	t.reflatten()
 }
 
 func (t *tree) setChildren(n *node, entries []fs.Entry) {
-	n.children = makeNodes(entries, n.depth+1)
+	n.children = makeNodes(entries, n.depth+1, n)
 	n.loaded = true
 	n.expanded = true
 	t.reflatten()
 }
 
-func makeNodes(entries []fs.Entry, depth int) []*node {
+func makeNodes(entries []fs.Entry, depth int, parent *node) []*node {
 	out := make([]*node, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, &node{entry: e, depth: depth})
+		out = append(out, &node{entry: e, depth: depth, parent: parent})
 	}
 	return out
 }

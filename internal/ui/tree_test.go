@@ -78,3 +78,27 @@ func TestTreeEmpty(t *testing.T) {
 	tr.moveDown()
 	tr.moveUp() // must not panic
 }
+
+func TestTreeParentPointers(t *testing.T) {
+	tr := newTree()
+	tr.setRoot(sampleRoot())
+	// root nodes have nil parent
+	for _, n := range tr.roots {
+		if n.parent != nil {
+			t.Fatalf("root node %q should have nil parent", n.entry.Name)
+		}
+	}
+	docs := tr.roots[0]
+	if !docs.entry.IsDir {
+		t.Fatal("first root should be docs dir")
+	}
+	tr.setChildren(docs, []fs.Entry{
+		{Name: "b.md", Path: "/r/docs/b.md"},
+		{Name: "c.md", Path: "/r/docs/c.md"},
+	})
+	for _, ch := range docs.children {
+		if ch.parent != docs {
+			t.Fatalf("child %q should have docs as parent, got %v", ch.entry.Name, ch.parent)
+		}
+	}
+}

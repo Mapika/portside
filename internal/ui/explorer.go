@@ -20,6 +20,10 @@ const (
 	modeHosts
 	modeDownload
 	modePassword
+	modeUpload
+	modeRename
+	modeDelete
+	modeMkdir
 )
 
 type explorer struct {
@@ -31,9 +35,11 @@ type explorer struct {
 	pathInput  textinput.Model
 	destInput  textinput.Model
 	passInput  textinput.Model
+	opInput    textinput.Model // shared input for upload/rename/mkdir prompts
 	hosts      []string
 	hostCursor int
 	pending     *node  // node chosen for download
+	pendingOp   *node  // node targeted by a file op
 	pendingHost string // host awaiting a password
 
 	loading bool
@@ -50,6 +56,7 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 	di.SetValue(filepath.Join(home, "Downloads"))
 	pw := textinput.New()
 	pw.EchoMode = textinput.EchoPassword
+	op := textinput.New()
 	return explorer{
 		fsys:      fsys,
 		rootPath:  rootPath,
@@ -57,12 +64,14 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 		pathInput: pi,
 		destInput: di,
 		passInput: pw,
+		opInput:   op,
 		loading:   true,
 	}
 }
 
 func (e explorer) typing() bool {
-	return e.mode == modePath || e.mode == modeDownload || e.mode == modePassword
+	return e.mode == modePath || e.mode == modeDownload || e.mode == modePassword ||
+		e.mode == modeUpload || e.mode == modeRename || e.mode == modeMkdir
 }
 
 func (e explorer) Init() tea.Cmd { return loadRootCmd(e.fsys, e.rootPath) }
@@ -94,6 +103,23 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 		}
 		e.tree.setChildren(msg.parent, msg.entries)
 		return e, nil
+	case fileOpResultMsg:
+		e.loading = false
+		if msg.err != nil {
+			return e, statusCmd(msg.verb+" "+msg.name+": "+msg.err.Error(), true)
+		}
+		// reload: if op node had a parent, reload that parent's children;
+		// otherwise reload the root listing
+		var reloadCmd tea.Cmd
+		if msg.parent != nil {
+			reloadCmd = loadChildrenCmd(e.fsys, msg.parent)
+		} else {
+			reloadCmd = loadRootCmd(e.fsys, e.rootPath)
+		}
+		return e, tea.Batch(
+			statusCmd(msg.verb+" "+msg.name, false),
+			reloadCmd,
+		)
 	case tea.KeyMsg:
 		return e.handleKey(msg)
 	case tea.MouseMsg:
@@ -107,6 +133,96 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 
 func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 	switch e.mode {
+	case modeUpload, modeRename, modeMkdir:
+		switch msg.String() {
+		case "enter":
+			val := e.opInput.Value()
+			n := e.pendingOp
+			mode := e.mode
+			e.mode = modeTree
+			e.opInput.Blur()
+			e.opInput.SetValue("")
+			e.loading = true
+			// determine parent node for reload
+			var parentNode *node
+			if n != nil {
+				parentNode = n.parent
+			}
+			switch mode {
+			case modeUpload:
+				// target dir: selected dir, else selected file's parent
+				destDir := ""
+				if n != nil {
+					if n.entry.IsDir {
+						destDir = n.entry.Path
+					} else if n.parent != nil {
+						destDir = n.parent.entry.Path
+					} else {
+						destDir = e.rootPath
+					}
+				}
+				fsys := e.fsys
+				return e, fileOpCmd(fsys, "uploaded", filepath.Base(val), parentNode, func() error {
+					return fsys.Upload(val, destDir)
+				})
+			case modeRename:
+				if n == nil {
+					e.loading = false
+					return e, nil
+				}
+				oldPath := n.entry.Path
+				fsys := e.fsys
+				return e, fileOpCmd(fsys, "renamed", val, parentNode, func() error {
+					return fsys.Rename(oldPath, val)
+				})
+			case modeMkdir:
+				// create inside selected dir, else in parent
+				parentPath := ""
+				if n != nil {
+					if n.entry.IsDir {
+						parentPath = n.entry.Path
+					} else if n.parent != nil {
+						parentPath = n.parent.entry.Path
+					} else {
+						parentPath = e.rootPath
+					}
+				}
+				newPath := filepath.Join(parentPath, val)
+				fsys := e.fsys
+				return e, fileOpCmd(fsys, "created", val, parentNode, func() error {
+					return fsys.Mkdir(newPath)
+				})
+			}
+		case "esc":
+			e.mode = modeTree
+			e.opInput.Blur()
+			e.opInput.SetValue("")
+			return e, nil
+		}
+		var cmd tea.Cmd
+		e.opInput, cmd = e.opInput.Update(msg)
+		return e, cmd
+
+	case modeDelete:
+		// next key: y confirms, anything else cancels
+		e.mode = modeTree
+		if msg.String() == "y" {
+			n := e.pendingOp
+			if n == nil {
+				return e, nil
+			}
+			var parentNode *node
+			parentNode = n.parent
+			p := n.entry.Path
+			name := n.entry.Name
+			fsys := e.fsys
+			e.loading = true
+			return e, fileOpCmd(fsys, "deleted", name, parentNode, func() error {
+				return fsys.Remove(p)
+			})
+		}
+		return e, nil
+
 	case modePassword:
 		switch msg.String() {
 		case "enter":
@@ -266,6 +382,39 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 				connectCmd(e.fsys.Name(), ""),
 			)
 		}
+	case "u":
+		n := e.tree.current()
+		e.pendingOp = n
+		e.opInput.Prompt = "upload (local path): "
+		e.opInput.SetValue("")
+		e.mode = modeUpload
+		return e, e.opInput.Focus()
+	case "m":
+		n := e.tree.current()
+		if n == nil {
+			break
+		}
+		e.pendingOp = n
+		e.opInput.Prompt = "rename: "
+		e.opInput.SetValue(n.entry.Name)
+		e.opInput.CursorEnd()
+		e.mode = modeRename
+		return e, e.opInput.Focus()
+	case "D":
+		n := e.tree.current()
+		if n == nil {
+			break
+		}
+		e.pendingOp = n
+		e.mode = modeDelete
+		return e, statusCmd("delete "+n.entry.Name+"? y/N", false)
+	case "n":
+		n := e.tree.current()
+		e.pendingOp = n
+		e.opInput.Prompt = "new folder: "
+		e.opInput.SetValue("")
+		e.mode = modeMkdir
+		return e, e.opInput.Focus()
 	}
 	return e, nil
 }
@@ -356,6 +505,14 @@ func (e explorer) View() string {
 		b.WriteString(e.destInput.View())
 	case modePassword:
 		b.WriteString(e.passInput.View())
+	case modeUpload, modeRename, modeMkdir:
+		b.WriteString(e.opInput.View())
+	case modeDelete:
+		name := ""
+		if e.pendingOp != nil {
+			name = e.pendingOp.entry.Name
+		}
+		b.WriteString(dimStyle.Render(" delete " + name + "? y/N"))
 	default:
 		if e.loading {
 			b.WriteString(dimStyle.Render(" loading…"))
