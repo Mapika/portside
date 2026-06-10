@@ -50,6 +50,11 @@ type explorer struct {
 
 	watch bool // auto-refresh enabled
 
+	// git status
+	gitStates  map[string]gitState
+	gitTop     string // resolved repo root (cached)
+	gitTopFor  string // the rootPath for which gitTop was resolved
+
 	loading bool
 	width   int
 	height  int
@@ -99,8 +104,43 @@ func (e explorer) setFilesystem(fsys fs.Filesystem, root string) (explorer, tea.
 }
 
 // gitRefreshCmd returns a command to refresh git status, or nil if the backend
-// does not support it. This seam is filled in by Task 4.
-func (e explorer) gitRefreshCmd() tea.Cmd { return nil }
+// does not implement fs.Execer.
+func (e explorer) gitRefreshCmd() tea.Cmd {
+	execer, ok := e.fsys.(fs.Execer)
+	if !ok {
+		return nil
+	}
+	// Capture state needed by the closure; the cmd must not mutate explorer.
+	rootPath := e.rootPath
+	cachedTop := e.gitTop
+	cachedTopFor := e.gitTopFor
+
+	return func() tea.Msg {
+		// Resolve the repo top, using the cache when possible.
+		top := cachedTop
+		if cachedTopFor != rootPath {
+			out, err := execer.Exec("git", "-C", rootPath, "rev-parse", "--show-toplevel")
+			if err != nil {
+				// Not a repo or exec error — return empty states; cache empty top.
+				return gitStatusMsg{root: rootPath, top: "", states: map[string]gitState{}}
+			}
+			// Trim newline from rev-parse output.
+			top = strings.TrimSpace(string(out))
+		}
+		if top == "" {
+			return gitStatusMsg{root: rootPath, top: "", states: map[string]gitState{}}
+		}
+		out, err := execer.Exec("git", "-C", rootPath, "status", "--porcelain", "-z")
+		if err != nil {
+			return gitStatusMsg{root: rootPath, top: top, states: map[string]gitState{}}
+		}
+		return gitStatusMsg{
+			root:   rootPath,
+			top:    top,
+			states: parseGitStatus(out, top),
+		}
+	}
+}
 
 func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -133,6 +173,15 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 			return e, nil
 		}
 		e.tree.mergeChildren(msg.parent, msg.entries, time.Now())
+		return e, nil
+
+	case gitStatusMsg:
+		if msg.root != e.rootPath {
+			return e, nil // stale — ignore
+		}
+		e.gitStates = msg.states
+		e.gitTop = msg.top
+		e.gitTopFor = msg.root
 		return e, nil
 
 	case rootLoadedMsg:
@@ -602,6 +651,10 @@ func (e explorer) renderNode(n *node, selected bool) string {
 		return cursorStyle.Render(line)
 	case changed:
 		return changedStyle.Render(line)
+	case !n.entry.IsDir && e.gitStates[n.entry.Path] == gitUntracked:
+		return gitUntrackedStyle.Render(line)
+	case !n.entry.IsDir && e.gitStates[n.entry.Path] == gitModified:
+		return gitModifiedStyle.Render(line)
 	case strings.HasPrefix(n.entry.Name, "."):
 		return dimStyle.Render(line)
 	case n.entry.IsDir:
