@@ -10,7 +10,8 @@ right, composed with tmux.
 curl -fsSL https://raw.githubusercontent.com/Mapika/portside/main/install.sh | sh
 ```
 
-Requires tmux and (for the right pane) Claude Code.
+Works on Linux and macOS (the same curl line auto-detects the OS). macOS
+requires tmux (`brew install tmux`) and (for the right pane) Claude Code.
 
 ### Windows
 

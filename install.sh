@@ -5,6 +5,15 @@ set -eu
 REPO="Mapika/portside"
 BIN_DIR="${PORTSIDE_BIN_DIR:-$HOME/.local/bin}"
 
+case "$(uname -s)" in
+    Linux)  OS=linux  ;;
+    Darwin) OS=darwin ;;
+    *)
+        echo "unsupported OS: $(uname -s)" >&2
+        exit 1
+        ;;
+esac
+
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64) ARCH=amd64 ;;
@@ -15,7 +24,7 @@ case "$ARCH" in
         ;;
 esac
 
-URL="https://github.com/$REPO/releases/latest/download/portside_linux_${ARCH}.tar.gz"
+URL="https://github.com/$REPO/releases/latest/download/portside_${OS}_${ARCH}.tar.gz"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
