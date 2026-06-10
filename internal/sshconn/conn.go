@@ -2,6 +2,7 @@ package sshconn
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -65,20 +66,86 @@ func Dial(host, addr, usr string, auth []ssh.AuthMethod, hk ssh.HostKeyCallback)
 	return &Conn{Host: host, Client: client, SFTP: sftpc}, nil
 }
 
-// Connect resolves an alias from the user's ssh config and dials it using
-// the SSH agent and any unencrypted private keys. If secret is non-empty it
-// also tries encrypted keys (decrypted with the secret), password auth, and
-// keyboard-interactive auth.
+// Connect resolves an alias from the user's ssh config and dials it (through
+// any ProxyJump hops) using the SSH agent and key files. If secret is
+// non-empty it also tries encrypted keys, password, and keyboard-interactive.
 func Connect(alias, secret string) (*Conn, error) {
 	r, err := LoadConfig(DefaultConfigPath())
 	if err != nil {
 		return nil, err
 	}
+	return dialChain(r, alias, secret, hostKeyCallback())
+}
+
+// dialChain connects to alias through any configured ProxyJump hops.
+func dialChain(r *Resolver, alias, secret string, hk ssh.HostKeyCallback) (*Conn, error) {
+	hops := r.ProxyJump(alias)
+	if len(hops) > 8 {
+		return nil, errors.New("proxyjump chain too long")
+	}
+
+	var hopClients []*ssh.Client
+	var prev *ssh.Client
+
+	for _, hop := range hops {
+		p := r.resolveHop(hop)
+		auth, closers := AuthMethods(p, secret)
+		client, err := dialMaybeVia(prev, p.Addr, p.User, auth, hk)
+		closeAll(closers)
+		if err != nil {
+			// close already-opened hops before returning
+			for i := len(hopClients) - 1; i >= 0; i-- {
+				hopClients[i].Close()
+			}
+			return nil, fmt.Errorf("via %s: %w", hop, err)
+		}
+		hopClients = append(hopClients, client)
+		prev = client
+	}
+
 	p := r.Resolve(alias)
 	auth, closers := AuthMethods(p, secret)
-	conn, err := Dial(alias, p.Addr, p.User, auth, hostKeyCallback())
+	client, err := dialMaybeVia(prev, p.Addr, p.User, auth, hk)
 	closeAll(closers)
-	return conn, err
+	if err != nil {
+		for i := len(hopClients) - 1; i >= 0; i-- {
+			hopClients[i].Close()
+		}
+		return nil, err
+	}
+
+	sftpc, err := sftp.NewClient(client)
+	if err != nil {
+		client.Close()
+		for i := len(hopClients) - 1; i >= 0; i-- {
+			hopClients[i].Close()
+		}
+		return nil, err
+	}
+	return &Conn{Host: alias, Client: client, SFTP: sftpc, hops: hopClients}, nil
+}
+
+// dialMaybeVia dials directly when via == nil, else tunnels through via.
+func dialMaybeVia(via *ssh.Client, addr, user string, auth []ssh.AuthMethod, hk ssh.HostKeyCallback) (*ssh.Client, error) {
+	cfg := &ssh.ClientConfig{
+		User:            user,
+		Auth:            auth,
+		HostKeyCallback: hk,
+		Timeout:         10 * time.Second,
+	}
+	if via == nil {
+		return ssh.Dial("tcp", addr, cfg)
+	}
+	conn, err := via.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
 }
 
 // IsAuthErr reports whether err is an SSH authentication failure (as opposed
