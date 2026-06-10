@@ -87,10 +87,7 @@ func (p ports) Update(msg tea.Msg) (ports, tea.Cmd) {
 		p.focus = 0
 		p.localIn.SetValue("")
 		p.remoteIn.SetValue("")
-		// Focus() is a pointer-receiver method: it sets p.localIn.focus = true
-		// directly on the stored field, so the returned ports has a focused localIn.
-		_ = p.localIn.Focus()
-		return p, nil
+		return p, p.localIn.Focus()
 	case "x":
 		if p.forwarder == nil {
 			return p, nil
