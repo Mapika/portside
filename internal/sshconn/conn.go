@@ -3,7 +3,6 @@ package sshconn
 import (
 	"errors"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -78,11 +77,9 @@ func Connect(alias string) (*Conn, error) {
 func AuthMethods(p Params) ([]ssh.AuthMethod, []io.Closer) {
 	var methods []ssh.AuthMethod
 	var closers []io.Closer
-	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-		if conn, err := net.Dial("unix", sock); err == nil {
-			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
-			closers = append(closers, conn)
-		}
+	if conn, err := dialAgent(); err == nil {
+		methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+		closers = append(closers, conn)
 	}
 	var signers []ssh.Signer
 	for _, kp := range p.KeyPaths {

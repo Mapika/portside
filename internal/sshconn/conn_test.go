@@ -29,3 +29,12 @@ func TestDialBadAddr(t *testing.T) {
 		t.Fatal("want connection error")
 	}
 }
+
+func TestAuthMethodsWithoutAgent(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "") // no agent reachable on any platform
+	methods, closers := AuthMethods(Params{})
+	if len(closers) != 0 {
+		t.Fatalf("want no closers without an agent, got %d", len(closers))
+	}
+	_ = methods // may be empty or key-only; must not panic
+}
