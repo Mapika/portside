@@ -1,0 +1,17 @@
+version: 2
+project_name: portside
+builds:
+  - main: .
+    binary: portside
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - scripts/work
