@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -8,6 +11,45 @@ import (
 	"github.com/Mapika/portside/internal/fs"
 	"github.com/Mapika/portside/internal/sshconn"
 )
+
+// shq wraps s in POSIX single quotes, escaping any embedded single quotes via
+// the '\'' idiom. The result is safe to embed in a shell command string.
+func shq(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// respawnArgv builds the tmux respawn-pane argv for moving the agent pane to
+// dir. For a local backend the argv drives exec.Command directly (no shell).
+// For a remote backend (fsys.Name() != "local") a single shell-command string
+// is passed so that ssh is re-invoked with the right working directory.
+func respawnArgv(fsysName, host, dir, agent string) []string {
+	if fsysName == "local" {
+		return []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", "-c", dir, agent}
+	}
+	// remote: build cmdstring = ssh -t <host> -- <bash -lc 'cd <dir> && exec <agent>'>
+	inner := "cd " + shq(dir) + " && exec " + agent
+	bashCmd := "bash -lc " + shq(inner)
+	cmdstring := "ssh -t " + shq(host) + " -- " + shq(bashCmd)
+	return []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", cmdstring}
+}
+
+// respawnAgentCmd issues the tmux respawn-pane command so the agent pane
+// restarts in dir. When $TMUX is unset it returns a status message explaining
+// that only the explorer moved.
+func respawnAgentCmd(fsysName, host, dir, agent string) tea.Cmd {
+	return func() tea.Msg {
+		if os.Getenv("TMUX") == "" {
+			return statusMsg{text: "moved the explorer only (agent pane needs tmux)", isErr: false}
+		}
+		argv := respawnArgv(fsysName, host, dir, agent)
+		// argv[0] == "tmux"
+		err := exec.Command(argv[0], argv[1:]...).Run()
+		if err != nil {
+			return statusMsg{text: "respawn-pane: " + err.Error(), isErr: true}
+		}
+		return statusMsg{text: "workspace → " + dir, isErr: false}
+	}
+}
 
 type rootLoadedMsg struct {
 	path    string

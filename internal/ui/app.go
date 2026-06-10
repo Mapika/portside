@@ -50,6 +50,22 @@ func NewAppWithHost(startDir, host string) App {
 	return a
 }
 
+// NewAppOpts creates an App with full options: startDir, host (empty = local),
+// and agent (empty defaults to "claude") for workspace jump respawn.
+func NewAppOpts(startDir, host, agent string) App {
+	if agent == "" {
+		agent = "claude"
+	}
+	var a App
+	if host != "" {
+		a = NewAppWithHost(startDir, host)
+	} else {
+		a = NewApp(startDir)
+	}
+	a.ex.agent = agent
+	return a
+}
+
 func (a App) Init() tea.Cmd {
 	if a.initialHost != "" {
 		return tea.Batch(

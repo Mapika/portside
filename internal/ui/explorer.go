@@ -30,6 +30,7 @@ const (
 	modeRename
 	modeDelete
 	modeMkdir
+	modeJump
 )
 
 type explorer struct {
@@ -42,11 +43,14 @@ type explorer struct {
 	destInput  textinput.Model
 	passInput  textinput.Model
 	opInput    textinput.Model // shared input for upload/rename/mkdir prompts
+	jumpInput  textinput.Model // workspace jump prompt
 	hosts      []string
 	hostCursor int
 	pending     *node  // node chosen for download
 	pendingOp   *node  // node targeted by a file op
 	pendingHost string // host awaiting a password
+
+	agent string // agent command to respawn (e.g. "claude")
 
 	watch   bool // auto-refresh enabled
 	tickGen int  // incremented each time watch is enabled; guards against parallel tick chains
@@ -71,6 +75,8 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 	pw := textinput.New()
 	pw.EchoMode = textinput.EchoPassword
 	op := textinput.New()
+	ji := textinput.New()
+	ji.Prompt = "workspace: "
 	return explorer{
 		fsys:      fsys,
 		rootPath:  rootPath,
@@ -79,6 +85,8 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 		destInput: di,
 		passInput: pw,
 		opInput:   op,
+		jumpInput: ji,
+		agent:     "claude",
 		watch:     true,
 		loading:   true,
 	}
@@ -87,7 +95,7 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 func (e explorer) typing() bool {
 	return e.mode == modePath || e.mode == modeDownload || e.mode == modePassword ||
 		e.mode == modeUpload || e.mode == modeRename || e.mode == modeMkdir ||
-		e.mode == modeDelete
+		e.mode == modeDelete || e.mode == modeJump
 }
 
 func (e explorer) Init() tea.Cmd {
@@ -388,6 +396,35 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 		e.destInput, cmd = e.destInput.Update(msg)
 		return e, cmd
 
+	case modeJump:
+		switch msg.String() {
+		case "enter":
+			dir := e.jumpInput.Value()
+			e.mode = modeTree
+			e.jumpInput.Blur()
+			if hasControlChar(dir) {
+				return e, statusCmd("refusing to jump to a path with control characters", true)
+			}
+			e.loading = true
+			fsysName := e.fsys.Name()
+			host := fsysName
+			if host == "local" {
+				host = ""
+			}
+			agent := e.agent
+			return e, tea.Batch(
+				loadRootCmd(e.fsys, dir),
+				respawnAgentCmd(fsysName, host, dir, agent),
+			)
+		case "esc":
+			e.mode = modeTree
+			e.jumpInput.Blur()
+			return e, nil
+		}
+		var cmd tea.Cmd
+		e.jumpInput, cmd = e.jumpInput.Update(msg)
+		return e, cmd
+
 	case modeHosts:
 		switch msg.String() {
 		case "up", "k":
@@ -524,6 +561,22 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 		e.opInput.SetValue("")
 		e.mode = modeMkdir
 		return e, e.opInput.Focus()
+	case ">":
+		// Workspace jump: prefill with the selected dir (or parent dir for files)
+		prefill := e.rootPath
+		if n := e.tree.current(); n != nil {
+			if n.entry.IsDir {
+				prefill = n.entry.Path
+			} else if n.parent != nil {
+				prefill = n.parent.entry.Path
+			} else {
+				prefill = e.rootPath
+			}
+		}
+		e.jumpInput.SetValue(prefill)
+		e.jumpInput.CursorEnd()
+		e.mode = modeJump
+		return e, e.jumpInput.Focus()
 	}
 	return e, nil
 }
@@ -638,6 +691,8 @@ func (e explorer) View() string {
 		b.WriteString(e.passInput.View())
 	case modeUpload, modeRename, modeMkdir:
 		b.WriteString(e.opInput.View())
+	case modeJump:
+		b.WriteString(e.jumpInput.View())
 	case modeDelete:
 		name := ""
 		if e.pendingOp != nil {
