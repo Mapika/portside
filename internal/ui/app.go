@@ -76,6 +76,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ex.loading = false
 		if msg.err != nil {
 			a.status, a.statusErr = "connect "+msg.host+": "+msg.err.Error(), true
+			if a.ex.tree.roots == nil {
+				// the startup --host connect failed before anything was
+				// loaded — open the host picker instead of a blank tree
+				var cmd tea.Cmd
+				a.ex, cmd = a.ex.showHosts()
+				return a, cmd
+			}
 			return a, nil
 		}
 		if a.conn != nil {

@@ -204,13 +204,7 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 		e.pathInput.CursorEnd()
 		return e, e.pathInput.Focus()
 	case "ctrl+h":
-		r, err := sshconn.LoadConfig(sshconn.DefaultConfigPath())
-		if err != nil {
-			return e, statusCmd("ssh config: "+err.Error(), true)
-		}
-		e.hosts = r.Hosts()
-		e.hostCursor = 0
-		e.mode = modeHosts
+		return e.showHosts()
 	case "d":
 		n := e.tree.current()
 		if n == nil {
@@ -234,6 +228,19 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 			)
 		}
 	}
+	return e, nil
+}
+
+// showHosts opens the host picker (also used by App when a startup connect
+// fails, so the user isn't left staring at an empty tree).
+func (e explorer) showHosts() (explorer, tea.Cmd) {
+	r, err := sshconn.LoadConfig(sshconn.DefaultConfigPath())
+	if err != nil {
+		return e, statusCmd("ssh config: "+err.Error(), true)
+	}
+	e.hosts = r.Hosts()
+	e.hostCursor = 0
+	e.mode = modeHosts
 	return e, nil
 }
 

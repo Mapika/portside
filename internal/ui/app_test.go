@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/Mapika/portside/internal/fs"
 )
 
 func TestAppInitWithHostConnects(t *testing.T) {
@@ -78,5 +81,32 @@ func TestAppQuitsOnCtrlC(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Fatal("want tea.QuitMsg")
+	}
+}
+
+func TestAppFailedStartupConnectOpensHostPicker(t *testing.T) {
+	a := NewAppWithHost("/tmp", "deadhost")
+	m, _ := a.Update(connectResultMsg{host: "deadhost", err: errors.New("boom")})
+	a = m.(App)
+	if !a.statusErr || !strings.Contains(a.status, "deadhost") {
+		t.Fatalf("want red connect status, got %q (err=%v)", a.status, a.statusErr)
+	}
+	if a.ex.mode != modeHosts {
+		t.Fatal("want host picker after failed startup connect")
+	}
+}
+
+func TestAppFailedReconnectKeepsLoadedTree(t *testing.T) {
+	a := NewApp("/tmp")
+	// simulate a loaded local tree
+	a.ex, _ = a.ex.Update(rootLoadedMsg{path: "/tmp", entries: nil})
+	a.ex.tree.setRoot([]fs.Entry{{Name: "x", Path: "/tmp/x"}})
+	m, _ := a.Update(connectResultMsg{host: "deadhost", err: errors.New("boom")})
+	a = m.(App)
+	if a.ex.mode == modeHosts {
+		t.Fatal("must not hijack an already-loaded view")
+	}
+	if len(a.ex.tree.visible()) != 1 {
+		t.Fatal("loaded tree must survive a failed connect")
 	}
 }
