@@ -13,3 +13,20 @@ jobs:
           go-version: stable
       - run: go vet ./...
       - run: go test -race ./...
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go vet ./...
+      - run: go test ./...
+      - name: parse powershell scripts
+        shell: pwsh
+        run: |
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/scripts/work.ps1", [ref]$null, [ref]$errs) | Out-Null
+          if ($errs) { $errs; exit 1 }
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$null, [ref]$errs) | Out-Null
+          if ($errs) { $errs; exit 1 }
