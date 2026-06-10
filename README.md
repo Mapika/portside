@@ -64,6 +64,9 @@ the agent does — install it there first).
 The agent defaults to `claude` (Claude Code). Override with `-a <cmd>` or by
 setting `WORK_AGENT` in your environment.
 
+The explorer takes 10% of the width by default; set `WORK_SPLIT` (the agent
+pane's share, e.g. `WORK_SPLIT=65%`) to change it.
+
 Downloads go to `~/Downloads` by default (`C:\Users\<you>\Downloads` on
 Windows); the `save to:` prompt remembers what you last typed.
 
@@ -74,7 +77,8 @@ Windows); the `save to:` prompt remembers what you last typed.
 | `↑/↓` `j/k` | move |
 | `enter` `→/l` | expand folder (enter also collapses) |
 | `←/h` | collapse folder |
-| `:` or `Ctrl+L` | type a path to jump to |
+| `:` or `Ctrl+L` | type a path to jump to (explorer only) |
+| `>` | jump the whole workspace: explorer AND agent pane restart in a new directory |
 | `Ctrl+H` | switch host (local / ~/.ssh/config hosts) |
 | `d` | download selected file/folder |
 | `u` | upload a local file/folder into the selected directory |
