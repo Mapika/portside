@@ -1,0 +1,10 @@
+Host web
+    HostName web.example.com
+    User deploy
+    Port 2222
+
+Host db
+    HostName 10.0.0.5
+
+Host *
+    User fallback
