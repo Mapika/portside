@@ -40,12 +40,14 @@ fi
 COLS="$(tput cols 2>/dev/null || echo 220)"
 ROWS="$(tput lines 2>/dev/null || echo 50)"
 
+printf -v QUOTED_AGENT '%q' "$AGENT"
+printf -v QUOTED_HOST '%q' "$HOST"
+
 if [ -n "$HOST" ]; then
-    tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host '$HOST' --agent '$AGENT'"
-    printf -v QUOTED_AGENT '%q' "$AGENT"
-    tmux split-window -h -l "${WORK_SPLIT:-90%}" -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc $QUOTED_AGENT\""
+    tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host $QUOTED_HOST --agent $QUOTED_AGENT"
+    tmux split-window -h -l "${WORK_SPLIT:-90%}" -t "$SESSION:main" "ssh -t $QUOTED_HOST -- \"bash -lc $QUOTED_AGENT\""
 else
-    tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" "portside --agent '$AGENT'"
+    tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" "portside --agent $QUOTED_AGENT"
     tmux split-window -h -l "${WORK_SPLIT:-90%}" -t "$SESSION:main" -c "$DIR" "$AGENT"
 fi
 tmux set-option -t "$SESSION" mouse on

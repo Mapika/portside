@@ -28,7 +28,13 @@ func respawnArgv(fsysName, host, dir, agent, target string) []string {
 		return []string{"tmux", "respawn-pane", "-k", "-t", target, "-c", dir, agent}
 	}
 	// remote: build cmdstring = ssh -t <host> -- <bash -lc 'cd <dir> && exec <agent>'>
-	inner := "cd " + shq(dir) + " && exec " + agent
+	// the agent may be multi-word ("claude --continue"); quote each word so a
+	// quote inside one can't break the nesting
+	words := strings.Fields(agent)
+	for i, w := range words {
+		words[i] = shq(w)
+	}
+	inner := "cd " + shq(dir) + " && exec " + strings.Join(words, " ")
 	bashCmd := "bash -lc " + shq(inner)
 	cmdstring := "ssh -t " + shq(host) + " -- " + shq(bashCmd)
 	return []string{"tmux", "respawn-pane", "-k", "-t", target, cmdstring}

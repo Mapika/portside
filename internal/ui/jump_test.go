@@ -61,9 +61,11 @@ func TestRespawnArgvRemote(t *testing.T) {
 	if !strings.Contains(cmdstring, "bash -lc") {
 		t.Errorf("cmdstring should contain bash -lc, got: %q", cmdstring)
 	}
-	// Must contain exec claude
-	if !strings.Contains(cmdstring, "exec claude") {
-		t.Errorf("cmdstring should contain exec claude, got: %q", cmdstring)
+	// Must mention the agent (its quotes are escaped by the outer nesting,
+	// so check the bare word; exact nesting is asserted in
+	// TestRespawnArgvRemoteLiteralQuoting)
+	if !strings.Contains(cmdstring, "claude") {
+		t.Errorf("cmdstring should contain the agent, got: %q", cmdstring)
 	}
 }
 
@@ -73,8 +75,8 @@ func TestRespawnArgvRemoteLiteralQuoting(t *testing.T) {
 	argv := respawnArgv("web", "web", "/srv/my app", "claude", "%7")
 	cmdstring := argv[5]
 
-	// inner = "cd '/srv/my app' && exec claude"
-	inner := "cd " + shq("/srv/my app") + " && exec claude"
+	// inner = "cd '/srv/my app' && exec 'claude'" (agent words are quoted too)
+	inner := "cd " + shq("/srv/my app") + " && exec " + shq("claude")
 	// bashCmd = "bash -lc " + shq(inner)
 	bashCmd := "bash -lc " + shq(inner)
 	// cmdstring = "ssh -t " + shq("web") + " -- " + shq(bashCmd)
