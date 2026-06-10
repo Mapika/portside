@@ -1,0 +1,44 @@
+// Package testssh runs an in-process SSH server (with SFTP and direct-tcpip
+// support) for integration tests. It serves the real local filesystem and
+// accepts any authentication.
+package testssh
+
+import (
+	"net"
+	"testing"
+
+	gssh "github.com/gliderlabs/ssh"
+	"github.com/pkg/sftp"
+)
+
+// Start launches the server and returns its address (host:port). It is shut
+// down automatically when the test finishes.
+func Start(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &gssh.Server{
+		Handler: func(s gssh.Session) {},
+		LocalPortForwardingCallback: func(ctx gssh.Context, host string, port uint32) bool {
+			return true
+		},
+		ChannelHandlers: map[string]gssh.ChannelHandler{
+			"session":      gssh.DefaultSessionHandler,
+			"direct-tcpip": gssh.DirectTCPIPHandler,
+		},
+		SubsystemHandlers: map[string]gssh.SubsystemHandler{
+			"sftp": func(s gssh.Session) {
+				server, err := sftp.NewServer(s)
+				if err != nil {
+					return
+				}
+				server.Serve()
+			},
+		},
+	}
+	go srv.Serve(ln)
+	t.Cleanup(func() { srv.Close() })
+	return ln.Addr().String()
+}
