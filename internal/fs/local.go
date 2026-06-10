@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -21,14 +22,24 @@ func (Local) List(path string) ([]Entry, error) {
 	}
 	out := make([]Entry, 0, len(dirents))
 	for _, d := range dirents {
-		out = append(out, Entry{
+		e := Entry{
 			Name:  d.Name(),
 			Path:  filepath.Join(path, d.Name()),
 			IsDir: d.IsDir(),
-		})
+		}
+		if info, infoErr := d.Info(); infoErr == nil {
+			e.Size = info.Size()
+			e.ModTime = info.ModTime()
+		}
+		out = append(out, e)
 	}
 	Sort(out)
 	return out, nil
+}
+
+// Exec runs name with args (argv form, no shell) and returns combined output.
+func (Local) Exec(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
 }
 
 func (Local) Download(srcPath, destDir string) error {

@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,15 +10,23 @@ import (
 	"strings"
 
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 type SFTP struct {
 	client *sftp.Client
+	sshc   *ssh.Client
 	host   string
 }
 
 func NewSFTP(client *sftp.Client, host string) *SFTP {
 	return &SFTP{client: client, host: host}
+}
+
+// NewSFTPWithExec creates an SFTP backend that also supports Exec via the
+// supplied ssh.Client.
+func NewSFTPWithExec(client *sftp.Client, sshc *ssh.Client, host string) *SFTP {
+	return &SFTP{client: client, sshc: sshc, host: host}
 }
 
 func (s *SFTP) Name() string { return s.host }
@@ -32,13 +41,43 @@ func (s *SFTP) List(p string) ([]Entry, error) {
 	out := make([]Entry, 0, len(infos))
 	for _, fi := range infos {
 		out = append(out, Entry{
-			Name:  fi.Name(),
-			Path:  path.Join(p, fi.Name()),
-			IsDir: fi.IsDir(),
+			Name:    fi.Name(),
+			Path:    path.Join(p, fi.Name()),
+			IsDir:   fi.IsDir(),
+			Size:    fi.Size(),
+			ModTime: fi.ModTime(),
 		})
 	}
 	Sort(out)
 	return out, nil
+}
+
+// Exec runs name with args on the remote machine via a new SSH session. It
+// returns an error if no ssh.Client was provided (see NewSFTPWithExec).
+func (s *SFTP) Exec(name string, args ...string) ([]byte, error) {
+	if s.sshc == nil {
+		return nil, errors.New("sftp: Exec called without an ssh.Client")
+	}
+	sess, err := s.sshc.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	defer sess.Close()
+	return sess.Output(shellJoin(name, args))
+}
+
+// shellJoin joins name and args into a single shell command string with each
+// element single-quote-escaped, suitable for passing to ssh Session.Output.
+func shellJoin(name string, args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	escape := func(s string) string {
+		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	parts = append(parts, escape(name))
+	for _, a := range args {
+		parts = append(parts, escape(a))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *SFTP) Download(srcPath, destDir string) error {

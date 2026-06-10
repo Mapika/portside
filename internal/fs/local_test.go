@@ -3,7 +3,9 @@ package fs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 )
 
 // ---- Upload ----
@@ -202,5 +204,70 @@ func TestLocalDownloadDirRecursive(t *testing.T) {
 	}
 	if string(got) != "world" {
 		t.Fatalf("want world, got %q", got)
+	}
+}
+
+// ---- Metadata (Size + ModTime) ----
+
+func TestLocalListMetadata(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("hello metadata")
+	fpath := filepath.Join(dir, "meta.txt")
+	before := time.Now().Truncate(time.Second)
+	if err := os.WriteFile(fpath, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(time.Second)
+
+	entries, err := Local{}.List(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(entries))
+	}
+	e := entries[0]
+	if e.Size != int64(len(content)) {
+		t.Errorf("want Size %d, got %d", len(content), e.Size)
+	}
+	if e.ModTime.Before(before) || e.ModTime.After(after) {
+		t.Errorf("ModTime %v not in expected range [%v, %v]", e.ModTime, before, after)
+	}
+}
+
+// ---- Exec ----
+
+func TestLocalExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("argv exec test uses /bin/echo which is POSIX-only")
+	}
+	out, err := Local{}.Exec("/bin/echo", "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	// /bin/echo appends a newline
+	if got != "hi\n" {
+		t.Errorf("want %q, got %q", "hi\n", got)
+	}
+}
+
+// ---- shellJoin quoting ----
+
+func TestShellJoinQuoting(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"echo", []string{"hello"}, "'echo' 'hello'"},
+		{"echo", []string{"it's"}, `'echo' 'it'\''s'`},
+		{"cmd", []string{"a b", "c"}, "'cmd' 'a b' 'c'"},
+	}
+	for _, tc := range cases {
+		got := shellJoin(tc.name, tc.args)
+		if got != tc.want {
+			t.Errorf("shellJoin(%q, %v) = %q, want %q", tc.name, tc.args, got, tc.want)
+		}
 	}
 }

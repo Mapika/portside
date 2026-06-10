@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -12,7 +13,7 @@ import (
 	"github.com/Mapika/portside/internal/testssh"
 )
 
-func newTestSFTP(t *testing.T) *SFTP {
+func newTestSSHClient(t *testing.T) *ssh.Client {
 	t.Helper()
 	addr := testssh.Start(t)
 	cfg := &ssh.ClientConfig{User: "test", HostKeyCallback: ssh.InsecureIgnoreHostKey()}
@@ -21,12 +22,29 @@ func newTestSFTP(t *testing.T) *SFTP {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
+	return client
+}
+
+func newTestSFTP(t *testing.T) *SFTP {
+	t.Helper()
+	client := newTestSSHClient(t)
 	sc, err := sftp.NewClient(client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sc.Close() })
 	return NewSFTP(sc, "testhost")
+}
+
+func newTestSFTPWithExec(t *testing.T) *SFTP {
+	t.Helper()
+	client := newTestSSHClient(t)
+	sc, err := sftp.NewClient(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sc.Close() })
+	return NewSFTPWithExec(sc, client, "testhost")
 }
 
 func TestSFTPNameAndHome(t *testing.T) {
@@ -218,5 +236,61 @@ func TestSFTPDownloadFileAndDir(t *testing.T) {
 	got, err = os.ReadFile(filepath.Join(dest, base, "sub", "b.txt"))
 	if err != nil || string(got) != "world" {
 		t.Fatalf("dir download failed: %q %v", got, err)
+	}
+}
+
+// ---- Metadata (Size + ModTime) ----
+
+func TestSFTPListMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test server serves Windows paths; remote paths are POSIX by design")
+	}
+	s := newTestSFTP(t)
+	dir := t.TempDir()
+	content := []byte("sftp metadata test")
+	fpath := filepath.Join(dir, "meta.txt")
+	before := time.Now().Truncate(time.Second)
+	if err := os.WriteFile(fpath, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(time.Second)
+
+	entries, err := s.List(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(entries))
+	}
+	e := entries[0]
+	if e.Size != int64(len(content)) {
+		t.Errorf("want Size %d, got %d", len(content), e.Size)
+	}
+	if e.ModTime.Before(before) || e.ModTime.After(after) {
+		t.Errorf("ModTime %v not in expected range [%v, %v]", e.ModTime, before, after)
+	}
+}
+
+// ---- Exec ----
+
+func TestSFTPExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("exec test uses /bin/echo which is POSIX-only")
+	}
+	s := newTestSFTPWithExec(t)
+	out, err := s.Exec("/bin/echo", "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != "hi\n" {
+		t.Errorf("want %q, got %q", "hi\n", string(out))
+	}
+}
+
+func TestSFTPExecWithoutClient(t *testing.T) {
+	s := newTestSFTP(t) // plain NewSFTP — no ssh.Client
+	_, err := s.Exec("/bin/echo", "hi")
+	if err == nil {
+		t.Fatal("want error when no ssh.Client provided")
 	}
 }

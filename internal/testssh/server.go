@@ -5,6 +5,7 @@ package testssh
 
 import (
 	"net"
+	"os/exec"
 	"testing"
 
 	gssh "github.com/gliderlabs/ssh"
@@ -36,7 +37,24 @@ func startServer(t *testing.T, pwHandler gssh.PasswordHandler) string {
 		t.Fatal(err)
 	}
 	srv := &gssh.Server{
-		Handler: func(s gssh.Session) {},
+		Handler: func(s gssh.Session) {
+			cmd := s.Command()
+			if len(cmd) == 0 {
+				return
+			}
+			c := exec.Command(cmd[0], cmd[1:]...) //nolint:gosec // test-only
+			c.Stdout = s
+			c.Stderr = s.Stderr()
+			if err := c.Run(); err != nil {
+				if exit, ok := err.(*exec.ExitError); ok {
+					s.Exit(exit.ExitCode())
+				} else {
+					s.Exit(1)
+				}
+				return
+			}
+			s.Exit(0)
+		},
 		LocalPortForwardingCallback: func(ctx gssh.Context, host string, port uint32) bool {
 			return true
 		},

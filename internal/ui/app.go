@@ -100,7 +100,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.conn = msg.conn
 		a.fwd = sshconn.NewForwarder(msg.conn.Client)
 		a.pt.forwarder = a.fwd
-		sfs := fs.NewSFTP(msg.conn.SFTP, msg.host)
+		sfs := fs.NewSFTPWithExec(msg.conn.SFTP, msg.conn.Client, msg.host)
 		home, err := sfs.Home()
 		if err != nil {
 			home = "/"

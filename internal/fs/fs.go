@@ -5,12 +5,21 @@ package fs
 import (
 	"sort"
 	"strings"
+	"time"
 )
 
 type Entry struct {
-	Name  string
-	Path  string // absolute path on the backend
-	IsDir bool
+	Name    string
+	Path    string // absolute path on the backend
+	IsDir   bool
+	Size    int64
+	ModTime time.Time
+}
+
+// Execer is implemented by backends that can run a command on the machine
+// they browse.
+type Execer interface {
+	Exec(name string, args ...string) ([]byte, error)
 }
 
 type Filesystem interface {
