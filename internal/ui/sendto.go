@@ -25,9 +25,9 @@ func sendToClaudeCmd(path string) tea.Cmd {
 		if os.Getenv("TMUX") != "" {
 			err := exec.Command("tmux", "send-keys", "-t", "{right-of}", "-l", "--", path+" ").Run()
 			if err != nil {
-				return statusMsg{text: "send to claude: " + err.Error(), isErr: true}
+				return statusMsg{text: "send to agent pane: " + err.Error(), isErr: true}
 			}
-			return statusMsg{text: "sent to claude: " + path, isErr: false}
+			return statusMsg{text: "sent to agent pane: " + path, isErr: false}
 		}
 		fmt.Fprint(os.Stderr, osc52.New(path))
 		return statusMsg{text: "copied to clipboard: " + path, isErr: false}

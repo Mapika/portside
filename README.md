@@ -3,9 +3,8 @@
 A terminal file explorer for remote machines. It connects over plain SSH
 (nothing to install on the server), shows the remote filesystem as a tree,
 pulls files down to your machine with one key, and forwards ports like VS
-Code's Ports panel. It's built to sit in a split next to
-[Claude Code](https://claude.com/claude-code) — the `work` command opens both
-panes at once — but it's useful on its own too.
+Code's Ports panel. It's built to sit in a split next to an AI agent — the
+`work` command opens both panes at once — but it's useful on its own too.
 
 ![demo](demo/demo.gif)
 
@@ -13,7 +12,7 @@ I made this because my actual workday was: a terminal with an AI session on a
 server, a second terminal for scp, and a VS Code remote window I only opened
 to click "download" on some file. That's three tools for one job. portside is
 the one tool: browse the server, grab the file, forward the port, and hand
-file paths straight to the Claude pane next door (`c` types the selected path
+file paths straight to the agent pane next door (`c` types the selected path
 into it).
 
 ## Install
@@ -39,16 +38,20 @@ come from your Windows `~/.ssh/config` and the Windows OpenSSH agent.
 ## Usage
 
 ```sh
-work            # local workspace: portside left, claude right
-work <host>     # remote workspace: browse <host>, claude runs on it via ssh
-work <dir>      # local workspace in that directory
-portside --host <host>   # just the explorer, no claude pane
+work                     # local workspace: portside left, claude right
+work <host>              # remote workspace: browse <host>, claude runs on it via ssh
+work <dir>               # local workspace in that directory
+work -a codex <host>     # use codex (or any other agent) instead of claude
+portside --host <host>   # just the explorer, no agent pane
 ```
 
 `<host>` is any Host alias from your `~/.ssh/config`. Auth uses your SSH
 agent and unencrypted key files — if `ssh <host>` works without a password
 prompt, portside works. Nothing runs on the server (in remote `work` mode,
-Claude Code does — install it there first).
+the agent does — install it there first).
+
+The agent defaults to `claude` (Claude Code). Override with `-a <cmd>` or by
+setting `WORK_AGENT` in your environment.
 
 Downloads go to `~/Downloads` by default (`C:\Users\<you>\Downloads` on
 Windows); the `save to:` prompt remembers what you last typed.
@@ -67,7 +70,7 @@ Windows); the `save to:` prompt remembers what you last typed.
 | `m` | rename selected file/folder |
 | `D` | delete selected file/folder (recursive; prompts y/N) |
 | `n` | create a new folder inside the selected directory |
-| `c` | send the selected path to the agent pane (clipboard if no tmux) |
+| `c` | send the selected path to the agent pane (types it in; clipboard fallback if no tmux) |
 | `r` | refresh |
 | `.` | toggle hidden files |
 | `R` | reconnect current host |

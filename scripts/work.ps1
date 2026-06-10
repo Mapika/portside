@@ -1,7 +1,10 @@
-# work [host|dir] - Windows Terminal workspace: portside (left 35%) + claude (right 65%).
+# work [-Agent <cmd>] [host|dir] - Windows Terminal workspace: portside (left 35%) + agent (right 65%).
 # If the argument is a Host alias from ~/.ssh/config, both panes target that
-# machine: portside connects over SFTP and claude runs there via ssh.
-param([string]$Target = "")
+# machine: portside connects over SFTP and the agent runs there via ssh.
+param(
+    [string]$Target = "",
+    [string]$Agent = $(if ($env:WORK_AGENT) { $env:WORK_AGENT } else { "claude" })
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -30,16 +33,20 @@ $portside = Join-Path $PSScriptRoot "portside.exe"
 if (-not (Test-Path $portside)) { $portside = "portside" }
 
 if (Test-SshHost $Target) {
-    # remote mode: browse + run claude on the server
-    wt -w 0 new-tab --title work "$portside" --host $Target `; split-pane -V --size 0.65 ssh -t $Target "bash -lc claude"
+    # remote mode: browse + run agent on the server
+    wt -w 0 new-tab --title work "$portside" --host $Target `; split-pane -V --size 0.65 ssh -t $Target "bash -lc '$Agent'"
 } else {
     $dir = if ($Target) { $Target } else { (Get-Location).Path }
     if (-not (Test-Path $dir)) { Write-Error "no such directory or ssh host: $Target" }
-    if (Get-Command claude -ErrorAction SilentlyContinue) {
-        wt -w 0 new-tab --title work -d $dir "$portside" `; split-pane -V --size 0.65 -d $dir claude
-    } elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
-        wt -w 0 new-tab --title work -d $dir "$portside" `; split-pane -V --size 0.65 -d $dir wsl -e claude
+    if ($Agent -eq "claude") {
+        if (Get-Command claude -ErrorAction SilentlyContinue) {
+            wt -w 0 new-tab --title work -d $dir "$portside" `; split-pane -V --size 0.65 -d $dir claude
+        } elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
+            wt -w 0 new-tab --title work -d $dir "$portside" `; split-pane -V --size 0.65 -d $dir wsl -e claude
+        } else {
+            Write-Error "claude not found on PATH (install Claude Code, or WSL with claude inside)"
+        }
     } else {
-        Write-Error "claude not found on PATH (install Claude Code, or WSL with claude inside)"
+        wt -w 0 new-tab --title work -d $dir "$portside" `; split-pane -V --size 0.65 -d $dir $Agent
     }
 }

@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
-# work [host|dir] — tmux workspace: portside (left 35%) + claude (right 65%).
+# work [-a AGENT] [host|dir] — tmux workspace: portside (left 35%) + agent (right 65%).
 # If the argument is a Host alias from ~/.ssh/config, both panes target that
-# machine: portside connects over SFTP and claude runs there via ssh.
+# machine: portside connects over SFTP and the agent runs there via ssh.
 set -euo pipefail
 
 SESSION="work"
+AGENT="${WORK_AGENT:-claude}"
+
+while getopts "a:" opt; do
+    case "$opt" in
+        a) AGENT="$OPTARG" ;;
+        *) echo "usage: work [-a AGENT] [host|dir]" >&2; exit 1 ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 ARG="${1:-}"
 HOST=""
 DIR="$PWD"
@@ -32,10 +42,10 @@ ROWS="$(tput lines 2>/dev/null || echo 50)"
 
 if [ -n "$HOST" ]; then
     tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host '$HOST'"
-    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- 'bash -lc claude'"
+    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc '$AGENT'\""
 else
     tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" portside
-    tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" claude
+    tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" "$AGENT"
 fi
 tmux set-option -t "$SESSION" mouse on
 exec tmux attach-session -t "$SESSION"
