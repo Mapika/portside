@@ -164,6 +164,26 @@ func TestExplorerViewRendersTree(t *testing.T) {
 	}
 }
 
+func TestExplorerSendToClaude(t *testing.T) {
+	t.Setenv("TMUX", "") // force the clipboard path: no tmux dependency in tests
+	e := loadedExplorer(t, newTestFS())
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if cmd == nil {
+		t.Fatal("want a send command")
+	}
+	msgs := collectMsgs(cmd)
+	if len(msgs) != 1 {
+		t.Fatalf("want 1 msg, got %d", len(msgs))
+	}
+	s, ok := msgs[0].(statusMsg)
+	if !ok || s.isErr {
+		t.Fatalf("want success status, got %#v", msgs[0])
+	}
+	if !strings.Contains(s.text, "/root/docs") {
+		t.Fatalf("status should name the sent path: %q", s.text)
+	}
+}
+
 func TestExplorerMouseClickOnScrolledTree(t *testing.T) {
 	f := &fakeFS{name: "local", listings: map[string][]fs.Entry{"/root": {}}}
 	for i := 0; i < 20; i++ {

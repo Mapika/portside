@@ -214,6 +214,12 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 		e.mode = modeDownload
 		e.destInput.CursorEnd()
 		return e, e.destInput.Focus()
+	case "c":
+		n := e.tree.current()
+		if n == nil {
+			break
+		}
+		return e, sendToClaudeCmd(n.entry.Path)
 	case "r":
 		e.loading = true
 		return e, loadRootCmd(e.fsys, e.rootPath)

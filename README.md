@@ -44,6 +44,7 @@ portside --host <host>  # just the explorer, connected to a server
 | `enter` | expand/collapse folder |
 | `:` or `Ctrl+L` | type a path to jump to |
 | `Ctrl+H` | switch host (local / ~/.ssh/config hosts) |
+| `c` | send path to the Claude pane (or clipboard) |
 | `d` | download selected file/folder to local |
 | `r` | refresh |
 | `.` | toggle hidden files |
