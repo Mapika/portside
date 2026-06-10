@@ -32,9 +32,12 @@ func sendToAgentCmd(text string) tea.Cmd {
 			return statusMsg{text: "refusing to send a path with control characters", isErr: true}
 		}
 		if os.Getenv("TMUX") != "" {
-			err := exec.Command("tmux", "send-keys", "-t", "{right-of}", "-l", "--", text).Run()
+			target, err := rightPaneID()
 			if err != nil {
-				return statusMsg{text: "send failed (no agent pane to the right?): " + err.Error(), isErr: true}
+				return statusMsg{text: "send failed: " + err.Error(), isErr: true}
+			}
+			if err := exec.Command("tmux", "send-keys", "-t", target, "-l", "--", text).Run(); err != nil {
+				return statusMsg{text: "send failed: " + err.Error(), isErr: true}
 			}
 			return statusMsg{text: "sent to agent pane: " + text, isErr: false}
 		}

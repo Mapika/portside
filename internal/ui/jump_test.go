@@ -12,8 +12,8 @@ import (
 // ---- respawnArgv pure builder tests ----
 
 func TestRespawnArgvLocal(t *testing.T) {
-	argv := respawnArgv("local", "", "/srv/my app", "claude")
-	want := []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", "-c", "/srv/my app", "claude"}
+	argv := respawnArgv("local", "", "/srv/my app", "claude", "%7")
+	want := []string{"tmux", "respawn-pane", "-k", "-t", "%7", "-c", "/srv/my app", "claude"}
 	if len(argv) != len(want) {
 		t.Fatalf("local argv: want %v, got %v", want, argv)
 	}
@@ -26,8 +26,8 @@ func TestRespawnArgvLocal(t *testing.T) {
 
 func TestRespawnArgvLocalWithSingleQuote(t *testing.T) {
 	// dir with single quote in name
-	argv := respawnArgv("local", "", "/srv/mark's app", "claude")
-	want := []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", "-c", "/srv/mark's app", "claude"}
+	argv := respawnArgv("local", "", "/srv/mark's app", "claude", "%7")
+	want := []string{"tmux", "respawn-pane", "-k", "-t", "%7", "-c", "/srv/mark's app", "claude"}
 	if len(argv) != len(want) {
 		t.Fatalf("local argv with quote: want %v, got %v", want, argv)
 	}
@@ -40,12 +40,12 @@ func TestRespawnArgvLocalWithSingleQuote(t *testing.T) {
 
 func TestRespawnArgvRemote(t *testing.T) {
 	// host="web", dir="/srv/my app", agent="claude"
-	// argv = ["tmux","respawn-pane","-k","-t","{right-of}", cmdstring]  — 6 elements
-	argv := respawnArgv("web", "web", "/srv/my app", "claude")
+	// argv = ["tmux","respawn-pane","-k","-t","%7", cmdstring]  — 6 elements
+	argv := respawnArgv("web", "web", "/srv/my app", "claude", "%7")
 	if len(argv) != 6 {
 		t.Fatalf("remote argv: want 6 elements, got %d: %v", len(argv), argv)
 	}
-	if argv[0] != "tmux" || argv[1] != "respawn-pane" || argv[2] != "-k" || argv[3] != "-t" || argv[4] != "{right-of}" {
+	if argv[0] != "tmux" || argv[1] != "respawn-pane" || argv[2] != "-k" || argv[3] != "-t" || argv[4] != "%7" {
 		t.Fatalf("remote argv prefix wrong: %v", argv)
 	}
 	cmdstring := argv[5]
@@ -70,7 +70,7 @@ func TestRespawnArgvRemote(t *testing.T) {
 func TestRespawnArgvRemoteLiteralQuoting(t *testing.T) {
 	// host="web", dir="/srv/my app", agent="claude"
 	// Verify the exact cmdstring byte-for-byte (argv[5]).
-	argv := respawnArgv("web", "web", "/srv/my app", "claude")
+	argv := respawnArgv("web", "web", "/srv/my app", "claude", "%7")
 	cmdstring := argv[5]
 
 	// inner = "cd '/srv/my app' && exec claude"

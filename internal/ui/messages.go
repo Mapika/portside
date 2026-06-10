@@ -18,19 +18,20 @@ func shq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// respawnArgv builds the tmux respawn-pane argv for moving the agent pane to
-// dir. For a local backend the argv drives exec.Command directly (no shell).
-// For a remote backend (fsys.Name() != "local") a single shell-command string
-// is passed so that ssh is re-invoked with the right working directory.
-func respawnArgv(fsysName, host, dir, agent string) []string {
+// respawnArgv builds the tmux respawn-pane argv for moving the agent pane
+// (target = explicit pane id) to dir. For a local backend the argv drives
+// exec.Command directly (no shell). For a remote backend (fsys.Name() !=
+// "local") a single shell-command string is passed so that ssh is re-invoked
+// with the right working directory.
+func respawnArgv(fsysName, host, dir, agent, target string) []string {
 	if fsysName == "local" {
-		return []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", "-c", dir, agent}
+		return []string{"tmux", "respawn-pane", "-k", "-t", target, "-c", dir, agent}
 	}
 	// remote: build cmdstring = ssh -t <host> -- <bash -lc 'cd <dir> && exec <agent>'>
 	inner := "cd " + shq(dir) + " && exec " + agent
 	bashCmd := "bash -lc " + shq(inner)
 	cmdstring := "ssh -t " + shq(host) + " -- " + shq(bashCmd)
-	return []string{"tmux", "respawn-pane", "-k", "-t", "{right-of}", cmdstring}
+	return []string{"tmux", "respawn-pane", "-k", "-t", target, cmdstring}
 }
 
 // respawnAgentCmd issues the tmux respawn-pane command so the agent pane
@@ -41,10 +42,13 @@ func respawnAgentCmd(fsysName, host, dir, agent string) tea.Cmd {
 		if os.Getenv("TMUX") == "" {
 			return statusMsg{text: "moved the explorer only (agent pane needs tmux)", isErr: false}
 		}
-		argv := respawnArgv(fsysName, host, dir, agent)
-		// argv[0] == "tmux"
-		err := exec.Command(argv[0], argv[1:]...).Run()
+		target, err := rightPaneID()
 		if err != nil {
+			return statusMsg{text: "agent pane: " + err.Error(), isErr: true}
+		}
+		argv := respawnArgv(fsysName, host, dir, agent, target)
+		// argv[0] == "tmux"
+		if err := exec.Command(argv[0], argv[1:]...).Run(); err != nil {
 			return statusMsg{text: "respawn-pane: " + err.Error(), isErr: true}
 		}
 		return statusMsg{text: "workspace → " + dir, isErr: false}
