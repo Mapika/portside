@@ -14,8 +14,9 @@ func main() {
 	srv := &gssh.Server{
 		Addr:    "127.0.0.1:2222",
 		Handler: func(s gssh.Session) {},
+		// forwarding only to loopback — this server is for the demo recording
 		LocalPortForwardingCallback: func(ctx gssh.Context, host string, port uint32) bool {
-			return true
+			return host == "127.0.0.1" || host == "localhost"
 		},
 		ChannelHandlers: map[string]gssh.ChannelHandler{
 			"session":      gssh.DefaultSessionHandler,

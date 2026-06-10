@@ -58,7 +58,8 @@ Windows); the `save to:` prompt remembers what you last typed.
 | Key | Action |
 | --- | --- |
 | `↑/↓` `j/k` | move |
-| `enter` | expand/collapse folder |
+| `enter` `→/l` | expand folder (enter also collapses) |
+| `←/h` | collapse folder |
 | `:` or `Ctrl+L` | type a path to jump to |
 | `Ctrl+H` | switch host (local / ~/.ssh/config hosts) |
 | `d` | download selected file/folder |
