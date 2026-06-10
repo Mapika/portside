@@ -19,6 +19,7 @@ const (
 	modePath
 	modeHosts
 	modeDownload
+	modePassword
 )
 
 type explorer struct {
@@ -29,9 +30,11 @@ type explorer struct {
 
 	pathInput  textinput.Model
 	destInput  textinput.Model
+	passInput  textinput.Model
 	hosts      []string
 	hostCursor int
-	pending    *node // node chosen for download
+	pending     *node  // node chosen for download
+	pendingHost string // host awaiting a password
 
 	loading bool
 	width   int
@@ -45,17 +48,22 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 	di.Prompt = "save to: "
 	home, _ := os.UserHomeDir()
 	di.SetValue(filepath.Join(home, "Downloads"))
+	pw := textinput.New()
+	pw.EchoMode = textinput.EchoPassword
 	return explorer{
 		fsys:      fsys,
 		rootPath:  rootPath,
 		tree:      newTree(),
 		pathInput: pi,
 		destInput: di,
+		passInput: pw,
 		loading:   true,
 	}
 }
 
-func (e explorer) typing() bool { return e.mode == modePath || e.mode == modeDownload }
+func (e explorer) typing() bool {
+	return e.mode == modePath || e.mode == modeDownload || e.mode == modePassword
+}
 
 func (e explorer) Init() tea.Cmd { return loadRootCmd(e.fsys, e.rootPath) }
 
@@ -99,6 +107,31 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 
 func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 	switch e.mode {
+	case modePassword:
+		switch msg.String() {
+		case "enter":
+			secret := e.passInput.Value()
+			host := e.pendingHost
+			e.passInput.SetValue("")
+			e.passInput.Blur()
+			e.loading = true
+			return e, tea.Batch(
+				statusCmd("connecting…", false),
+				connectCmd(host, secret),
+			)
+		case "esc":
+			e.passInput.SetValue("")
+			e.passInput.Blur()
+			if e.tree.roots == nil {
+				return e.showHosts()
+			}
+			e.mode = modeTree
+			return e, nil
+		}
+		var cmd tea.Cmd
+		e.passInput, cmd = e.passInput.Update(msg)
+		return e, cmd
+
 	case modePath:
 		switch msg.String() {
 		case "enter":
@@ -237,6 +270,16 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 	return e, nil
 }
 
+// promptPassword enters modePassword, setting the prompt to "password for <host>: "
+// and focusing the masked input. Called by App when an authFailed result arrives.
+func (e explorer) promptPassword(host string) (explorer, tea.Cmd) {
+	e.pendingHost = host
+	e.passInput.Prompt = "password for " + host + ": "
+	e.passInput.SetValue("")
+	e.mode = modePassword
+	return e, e.passInput.Focus()
+}
+
 // showHosts opens the host picker (also used by App when a startup connect
 // fails, so the user isn't left staring at an empty tree).
 func (e explorer) showHosts() (explorer, tea.Cmd) {
@@ -311,6 +354,8 @@ func (e explorer) View() string {
 		b.WriteString(e.pathInput.View())
 	case modeDownload:
 		b.WriteString(e.destInput.View())
+	case modePassword:
+		b.WriteString(e.passInput.View())
 	default:
 		if e.loading {
 			b.WriteString(dimStyle.Render(" loading…"))

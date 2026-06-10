@@ -76,6 +76,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ex.loading = false
 		if msg.err != nil {
 			a.status, a.statusErr = "connect "+msg.host+": "+msg.err.Error(), true
+			if msg.authFailed {
+				// authentication failed — prompt for a password/passphrase
+				var cmd tea.Cmd
+				a.ex, cmd = a.ex.promptPassword(msg.host)
+				return a, cmd
+			}
 			if a.ex.tree.roots == nil {
 				// the startup --host connect failed before anything was
 				// loaded — open the host picker instead of a blank tree
