@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -86,4 +87,46 @@ func TestForwarderAddBusyPort(t *testing.T) {
 	if _, err := fr.Add(busy, 80); err == nil {
 		t.Fatal("want error for busy port")
 	}
+}
+
+func TestForwarderDialFailureSetsErr(t *testing.T) {
+	addr := testssh.Start(t)
+	conn, err := Dial("test", addr, "tester", nil, ssh.InsecureIgnoreHostKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// reserve a port, then free it so dialing it is refused immediately
+	// (a hardcoded low port like 1 gets black-holed on some setups, e.g. WSL2)
+	deadLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadPort := deadLn.Addr().(*net.TCPAddr).Port
+	deadLn.Close()
+
+	fr := NewForwarder(conn.Client)
+	defer fr.CloseAll()
+	fw, err := fr.Add(0, deadPort) // nothing listens on this remote port
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", fw.Local))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// connection will be closed by the forwarder; read until EOF
+	io.Copy(io.Discard, c)
+	c.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for fw.Err() == nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if fw.Err() == nil {
+		t.Fatal("want recorded tunnel error")
+	}
+	// double Stop must be safe
+	fr.Stop(fw)
+	fr.Stop(fw)
 }

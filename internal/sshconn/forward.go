@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -14,7 +15,19 @@ type Forward struct {
 	Local  int
 	Remote int
 	ln     net.Listener
+	once   sync.Once
+	err    atomic.Value // last tunnel error, if any
 }
+
+// Err returns the last error encountered tunneling a connection, or nil.
+func (f *Forward) Err() error {
+	if v := f.err.Load(); v != nil {
+		return v.(error)
+	}
+	return nil
+}
+
+func (f *Forward) close() { f.once.Do(func() { f.ln.Close() }) }
 
 // Forwarder manages port forwards over one SSH connection.
 type Forwarder struct {
@@ -53,20 +66,28 @@ func (fr *Forwarder) serve(fw *Forward) {
 			return // listener closed by Stop/CloseAll
 		}
 		go func() {
-			defer conn.Close()
 			remote, err := fr.client.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", fw.Remote))
 			if err != nil {
+				fw.err.Store(err) // surfaced via Forward.Err in the Ports view
+				conn.Close()
 				return
 			}
-			defer remote.Close()
-			go io.Copy(remote, conn)
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				io.Copy(remote, conn)
+			}()
 			io.Copy(conn, remote)
+			remote.Close()
+			wg.Wait()
+			conn.Close()
 		}()
 	}
 }
 
 func (fr *Forwarder) Stop(fw *Forward) {
-	fw.ln.Close()
+	fw.close()
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
 	for i, f := range fr.fws {
@@ -89,6 +110,6 @@ func (fr *Forwarder) CloseAll() {
 	fr.fws = nil
 	fr.mu.Unlock()
 	for _, f := range fws {
-		f.ln.Close()
+		f.close()
 	}
 }
