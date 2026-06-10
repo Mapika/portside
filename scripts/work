@@ -1,15 +1,41 @@
 #!/usr/bin/env bash
-# work [dir] — tmux workspace: portside (left 35%) + claude (right 65%)
+# work [host|dir] — tmux workspace: portside (left 35%) + claude (right 65%).
+# If the argument is a Host alias from ~/.ssh/config, both panes target that
+# machine: portside connects over SFTP and claude runs there via ssh.
 set -euo pipefail
 
 SESSION="work"
-DIR="${1:-$PWD}"
+ARG="${1:-}"
+HOST=""
+DIR="$PWD"
+
+is_ssh_host() {
+    [ -n "$1" ] && [ -f "$HOME/.ssh/config" ] || return 1
+    awk 'tolower($1)=="host"{for(i=2;i<=NF;i++)print $i}' "$HOME/.ssh/config" \
+        | grep -Fxq "$1"
+}
+
+if is_ssh_host "$ARG"; then
+    HOST="$ARG"
+elif [ -n "$ARG" ]; then
+    DIR="$ARG"
+fi
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     exec tmux attach-session -t "$SESSION"
 fi
 
-tmux new-session -d -s "$SESSION" -n main -c "$DIR" portside
-tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" claude
+# size the detached session like the current terminal so the 65% split is
+# computed against the real width (default would be 80x24)
+COLS="$(tput cols)"
+ROWS="$(tput lines)"
+
+if [ -n "$HOST" ]; then
+    tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host '$HOST'"
+    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- 'bash -lc claude'"
+else
+    tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" portside
+    tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" claude
+fi
 tmux set-option -t "$SESSION" mouse on
 exec tmux attach-session -t "$SESSION"

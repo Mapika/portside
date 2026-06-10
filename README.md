@@ -15,9 +15,13 @@ Requires tmux and (for the right pane) Claude Code.
 ## Usage
 
 ```sh
-work [dir]     # open the workspace (or reattach to it)
-portside [dir] # run just the explorer
+work [dir]      # local workspace (or reattach)
+work <host>     # remote workspace: browse + run Claude Code on that server
+portside [dir]  # just the explorer, local
+portside --host <host>  # just the explorer, connected to a server
 ```
+
+> Remote mode needs Claude Code installed on the server (it runs there over ssh); portside itself needs nothing remote.
 
 ## Keys
 

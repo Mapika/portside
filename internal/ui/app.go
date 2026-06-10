@@ -27,6 +27,8 @@ type App struct {
 	conn *sshconn.Conn
 	fwd  *sshconn.Forwarder
 
+	initialHost string
+
 	status    string
 	statusErr bool
 	width     int
@@ -40,7 +42,23 @@ func NewApp(startDir string) App {
 	}
 }
 
-func (a App) Init() tea.Cmd { return a.ex.Init() }
+// NewAppWithHost is like NewApp but connects to the given ssh host (an alias
+// from ~/.ssh/config) at startup instead of browsing the local filesystem.
+func NewAppWithHost(startDir, host string) App {
+	a := NewApp(startDir)
+	a.initialHost = host
+	return a
+}
+
+func (a App) Init() tea.Cmd {
+	if a.initialHost != "" {
+		return tea.Batch(
+			statusCmd("connecting to "+a.initialHost+"…", false),
+			connectCmd(a.initialHost),
+		)
+	}
+	return a.ex.Init()
+}
 
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {

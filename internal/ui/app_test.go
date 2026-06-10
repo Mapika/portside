@@ -7,6 +7,45 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func TestAppInitWithHostConnects(t *testing.T) {
+	a := NewAppWithHost("/tmp", "portside-test-no-such-host")
+	cmd := a.Init()
+	if cmd == nil {
+		t.Fatal("want an init command")
+	}
+	var sawConnecting, sawResult bool
+	for _, m := range collectMsgs(cmd) {
+		switch m := m.(type) {
+		case statusMsg:
+			if strings.Contains(m.text, "connecting to portside-test-no-such-host") {
+				sawConnecting = true
+			}
+		case connectResultMsg:
+			sawResult = true
+			if m.err == nil {
+				t.Fatal("connect to a nonexistent host should fail")
+			}
+			if m.host != "portside-test-no-such-host" {
+				t.Fatalf("wrong host: %s", m.host)
+			}
+		}
+	}
+	if !sawConnecting || !sawResult {
+		t.Fatalf("want connecting status + connect result, got connecting=%v result=%v", sawConnecting, sawResult)
+	}
+}
+
+func TestAppInitWithoutHostLoadsLocal(t *testing.T) {
+	a := NewApp(t.TempDir())
+	msgs := collectMsgs(a.Init())
+	if len(msgs) != 1 {
+		t.Fatalf("want 1 msg, got %d", len(msgs))
+	}
+	if _, ok := msgs[0].(rootLoadedMsg); !ok {
+		t.Fatalf("want rootLoadedMsg, got %#v", msgs[0])
+	}
+}
+
 func TestAppTogglesViews(t *testing.T) {
 	a := NewApp("/tmp")
 	m, _ := a.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
