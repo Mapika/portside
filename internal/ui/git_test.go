@@ -49,6 +49,18 @@ func TestParseGitStatusRenamePair(t *testing.T) {
 	}
 }
 
+func TestParseGitStatusCopyPair(t *testing.T) {
+	// Copy: "C  new.go\0old.go\0" — origin after the first NUL
+	out := []byte("C  new.go\x00old.go\x00")
+	states := parseGitStatus(out, "/repo")
+	if states["/repo/new.go"] != gitModified {
+		t.Errorf("want gitModified for copied file, got %v", states["/repo/new.go"])
+	}
+	if _, ok := states["/repo/old.go"]; ok {
+		t.Error("origin of copy should not appear as a separate entry")
+	}
+}
+
 func TestParseGitStatusEmpty(t *testing.T) {
 	states := parseGitStatus(nil, "/repo")
 	if len(states) != 0 {
@@ -267,6 +279,32 @@ func TestGitCacheInvalidatedOnRootPathChange(t *testing.T) {
 	e, _ = e.Update(gsm)
 	if e.gitTopFor != "/other" {
 		t.Errorf("want gitTopFor=/other, got %q", e.gitTopFor)
+	}
+}
+
+// TestSetFilesystemClearsGitState verifies that setFilesystem resets all
+// cached git state so stale data from the previous backend is not shown.
+func TestSetFilesystemClearsGitState(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+
+	// Simulate git state from the old filesystem.
+	e.gitStates = map[string]gitState{"/root/a.txt": gitModified}
+	e.gitTop = "/root"
+	e.gitTopFor = "/root"
+
+	// Switch filesystem.
+	f2 := &fakeFS{name: "local2", listings: map[string][]fs.Entry{"/other": {}}}
+	e, _ = e.setFilesystem(f2, "/other")
+
+	if e.gitStates != nil {
+		t.Errorf("setFilesystem should clear gitStates, got %v", e.gitStates)
+	}
+	if e.gitTop != "" {
+		t.Errorf("setFilesystem should clear gitTop, got %q", e.gitTop)
+	}
+	if e.gitTopFor != "" {
+		t.Errorf("setFilesystem should clear gitTopFor, got %q", e.gitTopFor)
 	}
 }
 

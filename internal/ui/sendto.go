@@ -34,7 +34,7 @@ func sendToAgentCmd(text string) tea.Cmd {
 		if os.Getenv("TMUX") != "" {
 			err := exec.Command("tmux", "send-keys", "-t", "{right-of}", "-l", "--", text).Run()
 			if err != nil {
-				return statusMsg{text: "send to agent pane: " + err.Error(), isErr: true}
+				return statusMsg{text: "send failed (no agent pane to the right?): " + err.Error(), isErr: true}
 			}
 			return statusMsg{text: "sent to agent pane: " + text, isErr: false}
 		}

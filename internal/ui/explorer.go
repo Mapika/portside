@@ -48,7 +48,8 @@ type explorer struct {
 	pendingOp   *node  // node targeted by a file op
 	pendingHost string // host awaiting a password
 
-	watch bool // auto-refresh enabled
+	watch   bool // auto-refresh enabled
+	tickGen int  // incremented each time watch is enabled; guards against parallel tick chains
 
 	// git status
 	gitStates  map[string]gitState
@@ -90,7 +91,7 @@ func (e explorer) typing() bool {
 }
 
 func (e explorer) Init() tea.Cmd {
-	return tea.Batch(loadRootCmd(e.fsys, e.rootPath), watchTickCmd())
+	return tea.Batch(loadRootCmd(e.fsys, e.rootPath), watchTickCmd(e.tickGen))
 }
 
 // setFilesystem switches backend (called by App after a successful connect,
@@ -100,6 +101,9 @@ func (e explorer) setFilesystem(fsys fs.Filesystem, root string) (explorer, tea.
 	e.rootPath = root
 	e.tree = newTree()
 	e.loading = true
+	e.gitStates = nil
+	e.gitTop = ""
+	e.gitTopFor = ""
 	return e, loadRootCmd(fsys, root)
 }
 
@@ -145,13 +149,13 @@ func (e explorer) gitRefreshCmd() tea.Cmd {
 func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 	switch msg := msg.(type) {
 	case watchTickMsg:
-		if !e.watch {
-			return e, nil // tick chain stops; toggling back on restarts it
+		if !e.watch || msg.gen != e.tickGen {
+			return e, nil // stale tick chain — orphan it
 		}
 		// Build batch: refresh root + all expanded dirs, then schedule next tick + git refresh.
 		cmds := []tea.Cmd{
 			refreshCmd(e.fsys, nil, e.rootPath),
-			watchTickCmd(),
+			watchTickCmd(e.tickGen),
 			e.gitRefreshCmd(),
 		}
 		for _, n := range e.tree.expandedDirs() {
@@ -470,7 +474,8 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 	case "w":
 		e.watch = !e.watch
 		if e.watch {
-			return e, tea.Batch(statusCmd("watch on", false), watchTickCmd())
+			e.tickGen++
+			return e, tea.Batch(statusCmd("watch on", false), watchTickCmd(e.tickGen))
 		}
 		return e, statusCmd("watch off", false)
 	case "r":

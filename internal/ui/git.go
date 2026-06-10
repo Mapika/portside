@@ -48,8 +48,8 @@ func parseGitStatus(out []byte, repoTop string) map[string]gitState {
 		xy := string(e[:2])
 		path := strings.TrimPrefix(string(e[2:]), " ")
 
-		// Rename entries: the next NUL-separated item is the origin path — skip it.
-		if len(xy) > 0 && xy[0] == 'R' {
+		// Rename and copy entries: the next NUL-separated item is the origin path — skip it.
+		if len(xy) > 0 && (xy[0] == 'R' || xy[0] == 'C') {
 			i++ // skip origin path
 		}
 

@@ -636,6 +636,46 @@ func TestWatchToggle(t *testing.T) {
 	// We do NOT execute cmd here to avoid blocking on the 3-second tick.
 }
 
+// TestWatchTickGenGuard verifies that stale tick chains are orphaned when
+// watch is toggled off then back on (tickGen increments).
+func TestWatchTickGenGuard(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// watch is on, tickGen starts at 0.
+	if e.tickGen != 0 {
+		t.Fatalf("initial tickGen want 0, got %d", e.tickGen)
+	}
+
+	// A tick for gen 0 should work.
+	_, cmd := e.Update(watchTickMsg{gen: 0})
+	if cmd == nil {
+		t.Fatal("watchTickMsg{gen:0} with watch=on should return a batch cmd")
+	}
+
+	// Toggle watch off, then back on: tickGen becomes 1.
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")}) // off
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")}) // on
+	if e.tickGen != 1 {
+		t.Fatalf("tickGen want 1 after off→on, got %d", e.tickGen)
+	}
+
+	// Stale tick from old chain (gen 0) must be silently dropped.
+	_, cmd = e.Update(watchTickMsg{gen: 0})
+	if cmd != nil {
+		t.Fatal("stale watchTickMsg{gen:0} should return nil (chain orphaned)")
+	}
+
+	// Current gen tick must still work.
+	_, cmd = e.Update(watchTickMsg{gen: 1})
+	if cmd == nil {
+		t.Fatal("watchTickMsg{gen:1} should return a batch cmd")
+	}
+	batchMsg := cmd()
+	if _, ok := batchMsg.(tea.BatchMsg); !ok {
+		t.Fatalf("want BatchMsg from current-gen tick, got %T", batchMsg)
+	}
+}
+
 // TestWatchStaleRootRefreshIgnored verifies that a root refreshedMsg for an
 // outdated path (the user navigated away) is silently dropped.
 func TestWatchStaleRootRefreshIgnored(t *testing.T) {

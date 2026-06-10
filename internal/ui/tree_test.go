@@ -279,6 +279,35 @@ func TestExpandedDirsEmpty(t *testing.T) {
 	}
 }
 
+// TestExpandedDirsCollapsedParent verifies that an expanded subdir under a
+// COLLAPSED parent is NOT returned by expandedDirs.
+func TestExpandedDirsCollapsedParent(t *testing.T) {
+	tr := newTree()
+	tr.setRoot(sampleRoot())
+	docs := tr.roots[0]
+
+	// Load and expand sub under docs, then collapse docs.
+	tr.setChildren(docs, []fs.Entry{
+		{Name: "sub", Path: "/r/docs/sub", IsDir: true},
+	})
+	sub := docs.children[0]
+	tr.setChildren(sub, []fs.Entry{{Name: "c.txt", Path: "/r/docs/sub/c.txt"}})
+	// At this point docs and sub are both expanded.
+	dirs := tr.expandedDirs()
+	if len(dirs) != 2 {
+		t.Fatalf("want 2 expanded dirs (docs+sub), got %d", len(dirs))
+	}
+
+	// Collapse docs — sub is still expanded+loaded inside it.
+	docs.expanded = false
+	tr.reflatten()
+
+	dirs = tr.expandedDirs()
+	if len(dirs) != 0 {
+		t.Errorf("want 0 expanded dirs when parent is collapsed, got %d: %v", len(dirs), dirs)
+	}
+}
+
 // ---- recentChanges tests ----
 
 func TestRecentChangesOrdering(t *testing.T) {

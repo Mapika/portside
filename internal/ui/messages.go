@@ -82,7 +82,7 @@ func downloadCmd(fsys fs.Filesystem, src, destDir, name string) tea.Cmd {
 	}
 }
 
-type watchTickMsg struct{}
+type watchTickMsg struct{ gen int }
 
 type refreshedMsg struct {
 	parent  *node // nil = root
@@ -91,8 +91,8 @@ type refreshedMsg struct {
 	err     error
 }
 
-func watchTickCmd() tea.Cmd {
-	return tea.Tick(watchInterval, func(time.Time) tea.Msg { return watchTickMsg{} })
+func watchTickCmd(gen int) tea.Cmd {
+	return tea.Tick(watchInterval, func(time.Time) tea.Msg { return watchTickMsg{gen: gen} })
 }
 
 func refreshCmd(fsys fs.Filesystem, parent *node, path string) tea.Cmd {

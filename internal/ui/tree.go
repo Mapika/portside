@@ -155,8 +155,10 @@ func (t *tree) mergeChildren(parent *node, entries []fs.Entry, now time.Time) {
 	t.reflatten()
 }
 
-// expandedDirs returns all loaded+expanded nodes in the tree (recursive,
-// regardless of visibility).
+// expandedDirs returns all loaded+expanded nodes in the tree (recursive).
+// Root nodes are always visited; for any node deeper in the tree, children
+// are only visited when the node itself is loaded and expanded. This prevents
+// collecting dirs that happen to be expanded inside a collapsed parent.
 func (t *tree) expandedDirs() []*node {
 	var out []*node
 	var collect func(nodes []*node)
@@ -164,8 +166,8 @@ func (t *tree) expandedDirs() []*node {
 		for _, n := range nodes {
 			if n.loaded && n.expanded {
 				out = append(out, n)
+				collect(n.children)
 			}
-			collect(n.children)
 		}
 	}
 	collect(t.roots)
