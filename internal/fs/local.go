@@ -1,9 +1,11 @@
 package fs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Local struct{}
@@ -38,6 +40,9 @@ func (Local) Upload(localSrc, destDir string) error {
 }
 
 func (Local) Rename(oldPath, newName string) error {
+	if strings.ContainsAny(newName, "/\\") || newName == "." || newName == ".." || newName == "" {
+		return fmt.Errorf("invalid name: %q", newName)
+	}
 	return os.Rename(oldPath, filepath.Join(filepath.Dir(oldPath), newName))
 }
 

@@ -4,6 +4,7 @@ package sshconn
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/user"
@@ -151,20 +152,24 @@ func (r *Resolver) ProxyJump(alias string) []string {
 // resolveHop resolves a hop specifier (alias or [user@]host[:port] literal)
 // into Params. If the specifier matches a config Host alias, it uses that
 // alias's resolved parameters; otherwise it parses the literal.
-func (r *Resolver) resolveHop(hop string) Params {
+// Returns an error when the hop literal has an empty host (e.g. "user@").
+func (r *Resolver) resolveHop(hop string) (Params, error) {
 	// check if this matches a config alias
 	if r.cfg != nil {
 		for _, h := range r.cfg.Hosts {
 			for _, pat := range h.Patterns {
 				s := pat.String()
 				if s == hop && !strings.ContainsAny(s, "*?!") {
-					return r.Resolve(hop)
+					return r.Resolve(hop), nil
 				}
 			}
 		}
 	}
 	// treat as literal [user@]host[:port]
-	hopUser, hopHost, hopPort := parseHop(hop)
+	hopUser, hopHost, hopPort, err := parseHop(hop)
+	if err != nil {
+		return Params{}, fmt.Errorf("invalid proxyjump hop: %w", err)
+	}
 	addr := net.JoinHostPort(hopHost, hopPort)
 	usr := hopUser
 	if usr == "" {
@@ -180,12 +185,12 @@ func (r *Resolver) resolveHop(hop string) Params {
 			keys = append(keys, k)
 		}
 	}
-	return Params{Alias: hop, Addr: addr, User: usr, KeyPaths: keys}
+	return Params{Alias: hop, Addr: addr, User: usr, KeyPaths: keys}, nil
 }
 
 // parseHop parses a [user@]host[:port] hop literal. If port is absent,
-// "22" is returned.
-func parseHop(s string) (user, host, port string) {
+// "22" is returned. Returns an error when the host part is empty.
+func parseHop(s string) (user, host, port string, err error) {
 	// strip user@ prefix
 	if idx := strings.Index(s, "@"); idx >= 0 {
 		user = s[:idx]
@@ -210,6 +215,9 @@ func parseHop(s string) (user, host, port string) {
 	}
 	if port == "" {
 		port = "22"
+	}
+	if host == "" {
+		err = errors.New("empty host")
 	}
 	return
 }

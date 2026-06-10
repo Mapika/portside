@@ -71,7 +71,8 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 
 func (e explorer) typing() bool {
 	return e.mode == modePath || e.mode == modeDownload || e.mode == modePassword ||
-		e.mode == modeUpload || e.mode == modeRename || e.mode == modeMkdir
+		e.mode == modeUpload || e.mode == modeRename || e.mode == modeMkdir ||
+		e.mode == modeDelete
 }
 
 func (e explorer) Init() tea.Cmd { return loadRootCmd(e.fsys, e.rootPath) }

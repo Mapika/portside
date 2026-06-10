@@ -60,6 +60,25 @@ func TestLocalRename(t *testing.T) {
 	}
 }
 
+func TestLocalRenameTraversalRejected(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "orig.txt")
+	if err := os.WriteFile(orig, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bad := []string{"../evil", "a/b", "", "."}
+	for _, name := range bad {
+		err := (Local{}).Rename(orig, name)
+		if err == nil {
+			t.Errorf("Rename with %q should return error", name)
+		}
+		// original must still exist
+		if _, statErr := os.Stat(orig); statErr != nil {
+			t.Errorf("original file gone after rejected rename with %q", name)
+		}
+	}
+}
+
 // ---- Remove ----
 
 func TestLocalRemoveFile(t *testing.T) {

@@ -363,6 +363,49 @@ func TestExplorerDeleteConfirmReject(t *testing.T) {
 	}
 }
 
+// TestExplorerDeleteTyping verifies that typing() returns true while the
+// explorer is waiting for a y/N confirmation, so that App.Update("q") does
+// NOT quit the application during a delete prompt.
+func TestExplorerDeleteTyping(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	if e.typing() {
+		t.Fatal("typing() should be false in modeTree")
+	}
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if e.mode != modeDelete {
+		t.Fatalf("want modeDelete after 'D', got %v", e.mode)
+	}
+	if !e.typing() {
+		t.Fatal("typing() must be true in modeDelete so that 'q' is not intercepted as quit")
+	}
+}
+
+// TestAppQNotQuitInDeleteMode verifies that the App does not quit when 'q' is
+// pressed while the explorer is in modeDelete (the delete confirmation prompt).
+func TestAppQNotQuitInDeleteMode(t *testing.T) {
+	dir := t.TempDir()
+	a := NewApp(dir)
+	// Load the explorer so we have an actual local tree with something to select.
+	msgs := collectMsgs(a.Init())
+	for _, m := range msgs {
+		a.ex, _ = a.ex.Update(m)
+	}
+	// Press D to enter delete confirm mode.
+	a.ex, _ = a.ex.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if a.ex.mode != modeDelete {
+		t.Skip("no entries in temp dir, cannot enter modeDelete")
+	}
+	// Now send 'q' through the App. It must NOT return a quit command.
+	_, cmd := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		msg := cmd()
+		if _, isQuit := msg.(tea.QuitMsg); isQuit {
+			t.Fatal("App must not quit when 'q' is pressed during a delete confirmation prompt")
+		}
+	}
+}
+
 func TestExplorerMkdirMode(t *testing.T) {
 	f := newTestFS()
 	e := loadedExplorer(t, f)

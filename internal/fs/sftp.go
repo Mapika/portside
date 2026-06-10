@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path" // remote paths are always POSIX
@@ -117,6 +118,9 @@ func (s *SFTP) uploadFile(localSrc, remoteDest string) error {
 }
 
 func (s *SFTP) Rename(oldPath, newName string) error {
+	if strings.ContainsAny(newName, "/\\") || newName == "." || newName == ".." || newName == "" {
+		return fmt.Errorf("invalid name: %q", newName)
+	}
 	return s.client.Rename(oldPath, path.Join(path.Dir(oldPath), newName))
 }
 

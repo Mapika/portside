@@ -34,7 +34,8 @@ if (-not (Test-Path $portside)) { $portside = "portside" }
 
 if (Test-SshHost $Target) {
     # remote mode: browse + run agent on the server
-    wt -w 0 new-tab --title work "$portside" --host $Target `; split-pane -V --size 0.65 ssh -t $Target "bash -lc '$Agent'"
+    $agentEsc = $Agent -replace "'", "'\''"
+    wt -w 0 new-tab --title work "$portside" --host $Target `; split-pane -V --size 0.65 ssh -t $Target "bash -lc '$agentEsc'"
 } else {
     $dir = if ($Target) { $Target } else { (Get-Location).Path }
     if (-not (Test-Path $dir)) { Write-Error "no such directory or ssh host: $Target" }

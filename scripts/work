@@ -42,7 +42,8 @@ ROWS="$(tput lines 2>/dev/null || echo 50)"
 
 if [ -n "$HOST" ]; then
     tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host '$HOST'"
-    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc '$AGENT'\""
+    printf -v QUOTED_AGENT '%q' "$AGENT"
+    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc $QUOTED_AGENT\""
 else
     tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" portside
     tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" "$AGENT"

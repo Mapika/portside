@@ -88,7 +88,13 @@ func dialChain(r *Resolver, alias, secret string, hk ssh.HostKeyCallback) (*Conn
 	var prev *ssh.Client
 
 	for _, hop := range hops {
-		p := r.resolveHop(hop)
+		p, err := r.resolveHop(hop)
+		if err != nil {
+			for i := len(hopClients) - 1; i >= 0; i-- {
+				hopClients[i].Close()
+			}
+			return nil, err
+		}
 		auth, closers := AuthMethods(p, secret)
 		client, err := dialMaybeVia(prev, p.Addr, p.User, auth, hk)
 		closeAll(closers)

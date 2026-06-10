@@ -65,10 +65,10 @@ func TestProxyJumpMultipleHops(t *testing.T) {
 
 func TestParseHop(t *testing.T) {
 	tests := []struct {
-		in               string
-		wantUser         string
-		wantHost         string
-		wantPort         string
+		in       string
+		wantUser string
+		wantHost string
+		wantPort string
 	}{
 		{"host.example.com", "", "host.example.com", "22"},
 		{"user@host.example.com", "user", "host.example.com", "22"},
@@ -76,11 +76,31 @@ func TestParseHop(t *testing.T) {
 		{"user@host.example.com:2222", "user", "host.example.com", "2222"},
 	}
 	for _, tc := range tests {
-		u, h, p := parseHop(tc.in)
+		u, h, p, err := parseHop(tc.in)
+		if err != nil {
+			t.Errorf("parseHop(%q) unexpected error: %v", tc.in, err)
+			continue
+		}
 		if u != tc.wantUser || h != tc.wantHost || p != tc.wantPort {
 			t.Errorf("parseHop(%q) = (%q, %q, %q), want (%q, %q, %q)",
 				tc.in, u, h, p, tc.wantUser, tc.wantHost, tc.wantPort)
 		}
+	}
+}
+
+func TestParseHopEmptyHost(t *testing.T) {
+	// "user@" has a user but an empty host — must return an error.
+	_, _, _, err := parseHop("user@")
+	if err == nil {
+		t.Fatal("parseHop(\"user@\") should return an error for empty host")
+	}
+}
+
+func TestResolveHopEmptyHostError(t *testing.T) {
+	r := &Resolver{}
+	_, err := r.resolveHop("user@")
+	if err == nil {
+		t.Fatal("resolveHop(\"user@\") should return an error for empty host")
 	}
 }
 
