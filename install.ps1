@@ -24,7 +24,8 @@ Remove-Item -Recurse -Force $tmp
 
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if (($userPath -split ";") -notcontains $dest) {
-    [Environment]::SetEnvironmentVariable("Path", "$userPath;$dest", "User")
+    $newPath = if ($userPath) { "$userPath;$dest" } else { $dest }
+    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
     Write-Host "added $dest to your user PATH (restart the terminal to pick it up)"
 }
 Write-Host "installed portside and work to $dest"

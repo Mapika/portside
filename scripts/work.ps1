@@ -25,17 +25,15 @@ if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
 
 if (Test-SshHost $Target) {
     # remote mode: browse + run claude on the server
-    wt -w 0 new-tab --title work powershell -NoExit -Command "portside --host $Target" `; split-pane -V --size 0.65 ssh -t $Target -- bash -lc claude
+    wt -w 0 new-tab --title work portside --host $Target `; split-pane -V --size 0.65 ssh -t $Target "bash -lc claude"
 } else {
     $dir = if ($Target) { $Target } else { (Get-Location).Path }
     if (-not (Test-Path $dir)) { Write-Error "no such directory or ssh host: $Target" }
-    $claude = "claude"
-    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-        if (Get-Command wsl -ErrorAction SilentlyContinue) {
-            $claude = "wsl -e claude"
-        } else {
-            Write-Error "claude not found on PATH (install Claude Code, or WSL with claude inside)"
-        }
+    if (Get-Command claude -ErrorAction SilentlyContinue) {
+        wt -w 0 new-tab --title work -d $dir portside `; split-pane -V --size 0.65 -d $dir claude
+    } elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
+        wt -w 0 new-tab --title work -d $dir portside `; split-pane -V --size 0.65 -d $dir wsl -e claude
+    } else {
+        Write-Error "claude not found on PATH (install Claude Code, or WSL with claude inside)"
     }
-    wt -w 0 new-tab --title work -d $dir portside `; split-pane -V --size 0.65 -d $dir $claude
 }
