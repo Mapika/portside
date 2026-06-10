@@ -1,6 +1,8 @@
 package sshconn
 
 import (
+	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,13 +22,18 @@ type Conn struct {
 }
 
 func (c *Conn) Close() error {
+	var errs []error
 	if c.SFTP != nil {
-		c.SFTP.Close()
+		if err := c.SFTP.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	if c.Client != nil {
-		return c.Client.Close()
+		if err := c.Client.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Dial opens an SSH connection and an SFTP session over it.
@@ -57,16 +64,24 @@ func Connect(alias string) (*Conn, error) {
 		return nil, err
 	}
 	p := r.Resolve(alias)
-	return Dial(alias, p.Addr, p.User, AuthMethods(p), hostKeyCallback())
+	auth, closers := AuthMethods(p)
+	conn, err := Dial(alias, p.Addr, p.User, auth, hostKeyCallback())
+	for _, c := range closers {
+		c.Close()
+	}
+	return conn, err
 }
 
 // AuthMethods builds auth from the SSH agent (if running) and the key files
-// in p. Encrypted key files are skipped — use the agent for those.
-func AuthMethods(p Params) []ssh.AuthMethod {
+// in p. Encrypted key files are skipped — use the agent for those. The
+// returned closers must be closed once dialing has completed.
+func AuthMethods(p Params) ([]ssh.AuthMethod, []io.Closer) {
 	var methods []ssh.AuthMethod
+	var closers []io.Closer
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+			closers = append(closers, conn)
 		}
 	}
 	var signers []ssh.Signer
@@ -84,7 +99,7 @@ func AuthMethods(p Params) []ssh.AuthMethod {
 	if len(signers) > 0 {
 		methods = append(methods, ssh.PublicKeys(signers...))
 	}
-	return methods
+	return methods, closers
 }
 
 func hostKeyCallback() ssh.HostKeyCallback {

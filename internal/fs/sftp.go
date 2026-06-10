@@ -5,6 +5,7 @@ import (
 	"os"
 	"path" // remote paths are always POSIX
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/sftp"
 )
@@ -53,11 +54,9 @@ func (s *SFTP) Download(srcPath, destDir string) error {
 		if err := walker.Err(); err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(srcPath, walker.Path())
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dest, rel)
+		rel := strings.TrimPrefix(walker.Path(), srcPath)
+		rel = strings.TrimPrefix(rel, "/")
+		target := filepath.Join(dest, filepath.FromSlash(rel))
 		if walker.Stat().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
@@ -65,6 +64,9 @@ func (s *SFTP) Download(srcPath, destDir string) error {
 		} else if err := s.downloadFile(walker.Path(), target); err != nil {
 			return err
 		}
+	}
+	if err := walker.Err(); err != nil {
+		return err
 	}
 	return nil
 }

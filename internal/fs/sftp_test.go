@@ -24,6 +24,7 @@ func newTestSFTP(t *testing.T) *SFTP {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { sc.Close() })
 	return NewSFTP(sc, "testhost")
 }
 
