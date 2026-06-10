@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# work [dir] — tmux workspace: portside (left 35%) + claude (right 65%)
+set -euo pipefail
+
+SESSION="work"
+DIR="${1:-$PWD}"
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    exec tmux attach-session -t "$SESSION"
+fi
+
+tmux new-session -d -s "$SESSION" -n main -c "$DIR" portside
+tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" claude
+tmux set-option -t "$SESSION" mouse on
+exec tmux attach-session -t "$SESSION"
