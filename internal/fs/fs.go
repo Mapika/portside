@@ -21,6 +21,16 @@ type Filesystem interface {
 	// Download copies the file or directory at srcPath into the local
 	// directory destDir (recursively for directories).
 	Download(srcPath, destDir string) error
+	// Upload copies the local file or directory at localSrc into destDir on
+	// the backend (recursively for directories).
+	Upload(localSrc, destDir string) error
+	// Rename renames the file or directory at oldPath to newName (a bare
+	// name, not a path; the parent directory stays the same).
+	Rename(oldPath, newName string) error
+	// Remove deletes the file or directory at path recursively.
+	Remove(path string) error
+	// Mkdir creates a new directory at path.
+	Mkdir(path string) error
 }
 
 // Sort orders entries directories-first, then case-insensitively by name.

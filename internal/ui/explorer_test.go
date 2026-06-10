@@ -15,6 +15,8 @@ type fakeFS struct {
 	name      string
 	listings  map[string][]fs.Entry
 	downloads []string
+	ops       []string // records Upload/Rename/Remove/Mkdir calls
+	opErr     error    // if non-nil, returned by all op methods
 }
 
 func (f *fakeFS) Name() string          { return f.name }
@@ -29,6 +31,22 @@ func (f *fakeFS) List(path string) ([]fs.Entry, error) {
 func (f *fakeFS) Download(src, dest string) error {
 	f.downloads = append(f.downloads, src+"→"+dest)
 	return nil
+}
+func (f *fakeFS) Upload(localSrc, destDir string) error {
+	f.ops = append(f.ops, "upload:"+localSrc+"→"+destDir)
+	return f.opErr
+}
+func (f *fakeFS) Rename(oldPath, newName string) error {
+	f.ops = append(f.ops, "rename:"+oldPath+"→"+newName)
+	return f.opErr
+}
+func (f *fakeFS) Remove(path string) error {
+	f.ops = append(f.ops, "remove:"+path)
+	return f.opErr
+}
+func (f *fakeFS) Mkdir(path string) error {
+	f.ops = append(f.ops, "mkdir:"+path)
+	return f.opErr
 }
 
 func newTestFS() *fakeFS {

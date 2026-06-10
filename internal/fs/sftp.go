@@ -71,6 +71,63 @@ func (s *SFTP) Download(srcPath, destDir string) error {
 	return nil
 }
 
+func (s *SFTP) Upload(localSrc, destDir string) error {
+	info, err := os.Lstat(localSrc)
+	if err != nil {
+		return err
+	}
+	remoteDest := path.Join(destDir, filepath.Base(localSrc))
+	if !info.IsDir() {
+		return s.uploadFile(localSrc, remoteDest)
+	}
+	return filepath.Walk(localSrc, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(localSrc, p)
+		if err != nil {
+			return err
+		}
+		target := path.Join(remoteDest, filepath.ToSlash(rel))
+		if fi.IsDir() {
+			return s.client.MkdirAll(target)
+		}
+		return s.uploadFile(p, target)
+	})
+}
+
+func (s *SFTP) uploadFile(localSrc, remoteDest string) error {
+	if err := s.client.MkdirAll(path.Dir(remoteDest)); err != nil {
+		return err
+	}
+	in, err := os.Open(localSrc)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := s.client.Create(remoteDest)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+func (s *SFTP) Rename(oldPath, newName string) error {
+	return s.client.Rename(oldPath, path.Join(path.Dir(oldPath), newName))
+}
+
+func (s *SFTP) Remove(p string) error {
+	return s.client.RemoveAll(p)
+}
+
+func (s *SFTP) Mkdir(p string) error {
+	return s.client.Mkdir(p)
+}
+
 func (s *SFTP) downloadFile(src, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err

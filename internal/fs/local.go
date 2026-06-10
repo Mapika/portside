@@ -33,6 +33,22 @@ func (Local) Download(srcPath, destDir string) error {
 	return copyTree(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
 }
 
+func (Local) Upload(localSrc, destDir string) error {
+	return copyTree(localSrc, filepath.Join(destDir, filepath.Base(localSrc)))
+}
+
+func (Local) Rename(oldPath, newName string) error {
+	return os.Rename(oldPath, filepath.Join(filepath.Dir(oldPath), newName))
+}
+
+func (Local) Remove(path string) error {
+	return os.RemoveAll(path)
+}
+
+func (Local) Mkdir(path string) error {
+	return os.Mkdir(path, 0o755)
+}
+
 func copyTree(src, dest string) error {
 	info, err := os.Lstat(src)
 	if err != nil {
