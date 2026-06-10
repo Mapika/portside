@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Mapika/portside/internal/fs"
@@ -77,5 +79,25 @@ func connectCmd(alias, secret string) tea.Cmd {
 func downloadCmd(fsys fs.Filesystem, src, destDir, name string) tea.Cmd {
 	return func() tea.Msg {
 		return downloadResultMsg{name: name, err: fsys.Download(src, destDir)}
+	}
+}
+
+type watchTickMsg struct{}
+
+type refreshedMsg struct {
+	parent  *node // nil = root
+	path    string
+	entries []fs.Entry
+	err     error
+}
+
+func watchTickCmd() tea.Cmd {
+	return tea.Tick(watchInterval, func(time.Time) tea.Msg { return watchTickMsg{} })
+}
+
+func refreshCmd(fsys fs.Filesystem, parent *node, path string) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := fsys.List(path)
+		return refreshedMsg{parent: parent, path: path, entries: entries, err: err}
 	}
 }

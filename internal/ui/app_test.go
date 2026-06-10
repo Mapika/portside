@@ -42,13 +42,13 @@ func TestAppInitWithHostConnects(t *testing.T) {
 }
 
 func TestAppInitWithoutHostLoadsLocal(t *testing.T) {
-	a := NewApp(t.TempDir())
-	msgs := collectMsgs(a.Init())
-	if len(msgs) != 1 {
-		t.Fatalf("want 1 msg, got %d", len(msgs))
-	}
-	if _, ok := msgs[0].(rootLoadedMsg); !ok {
-		t.Fatalf("want rootLoadedMsg, got %#v", msgs[0])
+	dir := t.TempDir()
+	a := NewApp(dir)
+	// Init() returns a batch (loadRootCmd + watchTickCmd). Execute only the
+	// root-load part directly to avoid blocking on the 3-second tick.
+	msg := loadRootCmd(a.ex.fsys, a.ex.rootPath)()
+	if _, ok := msg.(rootLoadedMsg); !ok {
+		t.Fatalf("want rootLoadedMsg, got %#v", msg)
 	}
 }
 

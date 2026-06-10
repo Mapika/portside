@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -78,7 +79,8 @@ func collectMsgs(cmd tea.Cmd) []tea.Msg {
 func loadedExplorer(t *testing.T, f *fakeFS) explorer {
 	t.Helper()
 	e := newExplorer(f, "/root")
-	e, _ = e.Update(e.Init()())
+	// Use loadRootCmd directly instead of Init() to avoid blocking on watchTickCmd.
+	e, _ = e.Update(loadRootCmd(f, "/root")())
 	if len(e.tree.visible()) != 2 {
 		t.Fatalf("setup: want 2 visible, got %d", len(e.tree.visible()))
 	}
@@ -211,7 +213,7 @@ func TestExplorerMouseClickOnScrolledTree(t *testing.T) {
 		})
 	}
 	e := newExplorer(f, "/root")
-	e, _ = e.Update(e.Init()())
+	e, _ = e.Update(loadRootCmd(f, "/root")())
 	e.height = 12 // maxRows = 10
 
 	// scroll down to row 15 → window starts at 6
@@ -477,5 +479,174 @@ func TestExplorerOpError(t *testing.T) {
 	}
 	if !sawErr {
 		t.Fatal("want error status msg on op failure")
+	}
+}
+
+// ---- Watch mode tests ----
+
+// TestWatchTickOnReturnsRefreshBatch verifies that a watchTickMsg while watch
+// is on returns a non-nil batch cmd that, when applied, delivers refreshedMsgs
+// for root and each expanded dir.
+func TestWatchTickOnReturnsRefreshBatch(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// watch is on by default; expand docs so we have an expanded dir.
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter}) // expand docs
+	e, _ = e.Update(collectMsgs(cmd)[0])               // apply childrenLoadedMsg
+
+	// Inject watchTickMsg directly — do NOT execute watchTickCmd (blocks).
+	_, cmd = e.Update(watchTickMsg{})
+	if cmd == nil {
+		t.Fatal("watch tick with watch=on should return a batch cmd")
+	}
+	// The batch must produce refreshedMsgs for root and the expanded dir.
+	// We collect only the refreshedMsg results (non-blocking sub-cmds);
+	// the watchTickCmd sub-cmd is skipped by checking only synchronous msgs.
+	batchMsg := cmd()
+	batch, ok := batchMsg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("want BatchMsg from watchTickMsg handler, got %T", batchMsg)
+	}
+	var refreshPaths []string
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		// Execute each sub-cmd with a timeout: refreshCmds finish instantly;
+		// we detect them by type assertion on the message.
+		ch := make(chan tea.Msg, 1)
+		go func(cmd tea.Cmd) { ch <- cmd() }(c)
+		select {
+		case msg := <-ch:
+			if rm, ok := msg.(refreshedMsg); ok {
+				refreshPaths = append(refreshPaths, rm.path)
+			}
+		case <-time.After(100 * time.Millisecond):
+			// This is the watchTickCmd or similar long-running cmd — skip it.
+		}
+	}
+	var hasRoot, hasDocs bool
+	for _, p := range refreshPaths {
+		if p == "/root" {
+			hasRoot = true
+		}
+		if p == "/root/docs" {
+			hasDocs = true
+		}
+	}
+	if !hasRoot {
+		t.Errorf("want root refresh in batch, got paths: %v", refreshPaths)
+	}
+	if !hasDocs {
+		t.Errorf("want /root/docs refresh in batch (expanded dir), got paths: %v", refreshPaths)
+	}
+}
+
+// TestWatchTickOffReturnsNil verifies that a watchTickMsg while watch is off
+// returns nil (stopping the tick chain).
+func TestWatchTickOff(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	e.watch = false
+	_, cmd := e.Update(watchTickMsg{})
+	if cmd != nil {
+		t.Fatal("watch tick with watch=off should return nil cmd")
+	}
+}
+
+// TestWatchRefreshedMsgMarksChanged verifies that a refreshedMsg with a
+// changed mtime marks the node.
+func TestWatchRefreshedMsgMarksChanged(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	// Deliver a refreshedMsg for the root with an updated mtime on a.txt.
+	newEntries := []fs.Entry{
+		{Name: "docs", Path: "/root/docs", IsDir: true},
+		{Name: "a.txt", Path: "/root/a.txt", Size: 99, ModTime: time.Now()},
+	}
+	e, _ = e.Update(refreshedMsg{parent: nil, path: "/root", entries: newEntries})
+	// Find a.txt in the tree and verify changedAt is set.
+	var found *node
+	for _, n := range e.tree.roots {
+		if n.entry.Name == "a.txt" {
+			found = n
+		}
+	}
+	if found == nil {
+		t.Fatal("a.txt not found after refresh")
+	}
+	if found.changedAt.IsZero() {
+		t.Fatal("a.txt should have changedAt set after mtime change")
+	}
+}
+
+// TestWatchRefreshErrorTurnsWatchOff verifies that a refreshedMsg with an
+// error disables watch and sets an error status.
+func TestWatchRefreshErrorTurnsWatchOff(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	e, cmd := e.Update(refreshedMsg{parent: nil, path: "/root", err: errors.New("connection lost")})
+	if e.watch {
+		t.Fatal("watch should be off after refresh error")
+	}
+	// The returned cmd should produce an error status.
+	var sawErr bool
+	for _, m := range collectMsgs(cmd) {
+		if s, ok := m.(statusMsg); ok && s.isErr {
+			sawErr = true
+		}
+	}
+	if !sawErr {
+		t.Fatal("want error status after refresh error")
+	}
+}
+
+// TestWatchToggle verifies the w key toggles watch on/off.
+func TestWatchToggle(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	if !e.watch {
+		t.Fatal("watch should be on by default")
+	}
+	// Turn off.
+	e, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	if e.watch {
+		t.Fatal("watch should be off after 'w'")
+	}
+	// Turning off should produce a status msg (not a tick).
+	msgs := collectMsgs(cmd)
+	var sawStatus bool
+	for _, m := range msgs {
+		if s, ok := m.(statusMsg); ok && !s.isErr && strings.Contains(s.text, "watch off") {
+			sawStatus = true
+		}
+	}
+	if !sawStatus {
+		t.Fatal("want 'watch off' status msg")
+	}
+
+	// Turn back on — should return a non-nil cmd (the tick).
+	e, cmd = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	if !e.watch {
+		t.Fatal("watch should be on after second 'w'")
+	}
+	if cmd == nil {
+		t.Fatal("turning watch on should return a cmd (the tick)")
+	}
+	// We do NOT execute cmd here to avoid blocking on the 3-second tick.
+}
+
+// TestWatchStaleRootRefreshIgnored verifies that a root refreshedMsg for an
+// outdated path (the user navigated away) is silently dropped.
+func TestWatchStaleRootRefreshIgnored(t *testing.T) {
+	f := newTestFS()
+	e := loadedExplorer(t, f)
+	origLen := len(e.tree.roots)
+	// Deliver a refresh for a different path — should be ignored.
+	e, _ = e.Update(refreshedMsg{parent: nil, path: "/other", entries: []fs.Entry{
+		{Name: "x.txt", Path: "/other/x.txt"},
+	}})
+	if len(e.tree.roots) != origLen {
+		t.Fatalf("stale refresh should not modify tree; want %d roots, got %d", origLen, len(e.tree.roots))
 	}
 }

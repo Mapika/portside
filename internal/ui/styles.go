@@ -9,4 +9,5 @@ var (
 	cursorStyle    = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("231"))
 	statusStyle    = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250"))
 	statusErrStyle = lipgloss.NewStyle().Background(lipgloss.Color("52")).Foreground(lipgloss.Color("231"))
+	changedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )

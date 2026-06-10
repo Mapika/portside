@@ -4,12 +4,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Mapika/portside/internal/fs"
 	"github.com/Mapika/portside/internal/sshconn"
+)
+
+const (
+	watchInterval    = 3 * time.Second
+	changedHighlight = 45 * time.Second
 )
 
 type exMode int
@@ -42,6 +48,8 @@ type explorer struct {
 	pendingOp   *node  // node targeted by a file op
 	pendingHost string // host awaiting a password
 
+	watch bool // auto-refresh enabled
+
 	loading bool
 	width   int
 	height  int
@@ -65,6 +73,7 @@ func newExplorer(fsys fs.Filesystem, rootPath string) explorer {
 		destInput: di,
 		passInput: pw,
 		opInput:   op,
+		watch:     true,
 		loading:   true,
 	}
 }
@@ -75,7 +84,9 @@ func (e explorer) typing() bool {
 		e.mode == modeDelete
 }
 
-func (e explorer) Init() tea.Cmd { return loadRootCmd(e.fsys, e.rootPath) }
+func (e explorer) Init() tea.Cmd {
+	return tea.Batch(loadRootCmd(e.fsys, e.rootPath), watchTickCmd())
+}
 
 // setFilesystem switches backend (called by App after a successful connect,
 // or internally when the user picks "local").
@@ -87,8 +98,43 @@ func (e explorer) setFilesystem(fsys fs.Filesystem, root string) (explorer, tea.
 	return e, loadRootCmd(fsys, root)
 }
 
+// gitRefreshCmd returns a command to refresh git status, or nil if the backend
+// does not support it. This seam is filled in by Task 4.
+func (e explorer) gitRefreshCmd() tea.Cmd { return nil }
+
 func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 	switch msg := msg.(type) {
+	case watchTickMsg:
+		if !e.watch {
+			return e, nil // tick chain stops; toggling back on restarts it
+		}
+		// Build batch: refresh root + all expanded dirs, then schedule next tick + git refresh.
+		cmds := []tea.Cmd{
+			refreshCmd(e.fsys, nil, e.rootPath),
+			watchTickCmd(),
+			e.gitRefreshCmd(),
+		}
+		for _, n := range e.tree.expandedDirs() {
+			cmds = append(cmds, refreshCmd(e.fsys, n, n.entry.Path))
+		}
+		return e, tea.Batch(cmds...)
+
+	case refreshedMsg:
+		if msg.err != nil {
+			e.watch = false
+			return e, statusCmd("watch off: "+msg.err.Error(), true)
+		}
+		// Guard staleness: ignore if the parent is unloaded, or if this is a
+		// root refresh for a path we've moved away from.
+		if msg.parent != nil && !msg.parent.loaded {
+			return e, nil
+		}
+		if msg.parent == nil && msg.path != e.rootPath {
+			return e, nil
+		}
+		e.tree.mergeChildren(msg.parent, msg.entries, time.Now())
+		return e, nil
+
 	case rootLoadedMsg:
 		e.loading = false
 		if msg.err != nil {
@@ -96,7 +142,7 @@ func (e explorer) Update(msg tea.Msg) (explorer, tea.Cmd) {
 		}
 		e.rootPath = msg.path
 		e.tree.setRoot(msg.entries)
-		return e, statusCmd(e.fsys.Name()+" · "+msg.path, false)
+		return e, tea.Batch(statusCmd(e.fsys.Name()+" · "+msg.path, false), e.gitRefreshCmd())
 	case childrenLoadedMsg:
 		e.loading = false
 		if msg.err != nil {
@@ -370,6 +416,12 @@ func (e explorer) handleKey(msg tea.KeyMsg) (explorer, tea.Cmd) {
 			break
 		}
 		return e, sendToClaudeCmd(n.entry.Path)
+	case "w":
+		e.watch = !e.watch
+		if e.watch {
+			return e, tea.Batch(statusCmd("watch on", false), watchTickCmd())
+		}
+		return e, statusCmd("watch off", false)
 	case "r":
 		e.loading = true
 		return e, loadRootCmd(e.fsys, e.rootPath)
@@ -532,10 +584,24 @@ func (e explorer) renderNode(n *node, selected bool) string {
 			marker = "▸ "
 		}
 	}
-	line := " " + indent + marker + n.entry.Name
+
+	// Determine if the node was recently changed.
+	changed := !n.changedAt.IsZero() && time.Since(n.changedAt) < changedHighlight
+
+	// For changed files, replace the two-space file marker with the dot marker.
+	// Dirs keep their ▸/▾; only the name color changes.
+	fileMarker := marker
+	if changed && !n.entry.IsDir {
+		fileMarker = "● "
+	}
+
+	line := " " + indent + fileMarker + n.entry.Name
+
 	switch {
 	case selected:
 		return cursorStyle.Render(line)
+	case changed:
+		return changedStyle.Render(line)
 	case strings.HasPrefix(n.entry.Name, "."):
 		return dimStyle.Render(line)
 	case n.entry.IsDir:
