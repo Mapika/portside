@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	gopath "path"
 	"path/filepath"
 	"strings"
 )
@@ -53,14 +54,17 @@ func parseGitStatus(out []byte, repoTop string) map[string]gitState {
 			i++ // skip origin path
 		}
 
+		// Keys are slash-normalized so lookups work for both POSIX remote
+		// paths and Windows local paths (the render side normalizes too).
+		abs := gopath.Join(filepath.ToSlash(repoTop), path)
 		switch xy {
 		case "!!":
 			// ignored file — skip
 			continue
 		case "??":
-			result[filepath.Join(repoTop, path)] = gitUntracked
+			result[abs] = gitUntracked
 		default:
-			result[filepath.Join(repoTop, path)] = gitModified
+			result[abs] = gitModified
 		}
 	}
 	return result

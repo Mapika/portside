@@ -674,15 +674,16 @@ func (e explorer) renderNode(n *node, selected bool) string {
 	}
 
 	line := " " + indent + fileMarker + n.entry.Name
+	gitKey := filepath.ToSlash(n.entry.Path) // gitStates keys are slash-normalized
 
 	switch {
 	case selected:
 		return cursorStyle.Render(line)
 	case changed:
 		return changedStyle.Render(line)
-	case !n.entry.IsDir && e.gitStates[n.entry.Path] == gitUntracked:
+	case !n.entry.IsDir && e.gitStates[gitKey] == gitUntracked:
 		return gitUntrackedStyle.Render(line)
-	case !n.entry.IsDir && e.gitStates[n.entry.Path] == gitModified:
+	case !n.entry.IsDir && e.gitStates[gitKey] == gitModified:
 		return gitModifiedStyle.Render(line)
 	case strings.HasPrefix(n.entry.Name, "."):
 		return dimStyle.Render(line)
