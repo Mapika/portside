@@ -26,6 +26,9 @@ func TestLocalList(t *testing.T) {
 	if entries[0].Name != "zsub" || !entries[0].IsDir {
 		t.Fatalf("want zsub dir first, got %+v", entries[0])
 	}
+	if entries[0].Path != filepath.Join(dir, "zsub") {
+		t.Fatalf("wrong dir path: %s", entries[0].Path)
+	}
 	if entries[1].Name != "a.txt" || entries[1].IsDir {
 		t.Fatalf("want a.txt file second, got %+v", entries[1])
 	}

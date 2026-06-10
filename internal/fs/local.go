@@ -34,7 +34,7 @@ func (Local) Download(srcPath, destDir string) error {
 }
 
 func copyTree(src, dest string) error {
-	info, err := os.Stat(src)
+	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
