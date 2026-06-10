@@ -43,10 +43,10 @@ ROWS="$(tput lines 2>/dev/null || echo 50)"
 if [ -n "$HOST" ]; then
     tmux new-session -d -s "$SESSION" -n main -x "$COLS" -y "$ROWS" "portside --host '$HOST' --agent '$AGENT'"
     printf -v QUOTED_AGENT '%q' "$AGENT"
-    tmux split-window -h -l '65%' -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc $QUOTED_AGENT\""
+    tmux split-window -h -l "${WORK_SPLIT:-90%}" -t "$SESSION:main" "ssh -t '$HOST' -- \"bash -lc $QUOTED_AGENT\""
 else
     tmux new-session -d -s "$SESSION" -n main -c "$DIR" -x "$COLS" -y "$ROWS" "portside --agent '$AGENT'"
-    tmux split-window -h -l '65%' -t "$SESSION:main" -c "$DIR" "$AGENT"
+    tmux split-window -h -l "${WORK_SPLIT:-90%}" -t "$SESSION:main" -c "$DIR" "$AGENT"
 fi
 tmux set-option -t "$SESSION" mouse on
 exec tmux attach-session -t "$SESSION"

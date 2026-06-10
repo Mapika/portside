@@ -1,12 +1,19 @@
-# work [-Agent <cmd>] [host|dir] - Windows Terminal workspace: portside (left 35%) + agent (right 65%).
+# work [-Agent <cmd>] [host|dir] - Windows Terminal workspace: portside (left ~10%) + agent (right ~90%).
 # If the argument is a Host alias from ~/.ssh/config, both panes target that
 # machine: portside connects over SFTP and the agent runs there via ssh.
+# Set WORK_SPLIT (e.g. "90%" or "0.9") to override the default 90% agent split.
 param(
     [string]$Target = "",
     [string]$Agent = $(if ($env:WORK_AGENT) { $env:WORK_AGENT } else { "claude" })
 )
 
 $ErrorActionPreference = "Stop"
+
+# Compute the agent pane size from WORK_SPLIT (strip trailing %, divide by 100).
+$splitSize = if ($env:WORK_SPLIT) {
+    $s = $env:WORK_SPLIT -replace '%$', ''
+    [double]$s / 100
+} else { 0.9 }
 
 function Test-SshHost([string]$Name) {
     if (-not $Name) { return $false }
@@ -35,19 +42,19 @@ if (-not (Test-Path $portside)) { $portside = "portside" }
 if (Test-SshHost $Target) {
     # remote mode: browse + run agent on the server
     $agentEsc = $Agent -replace "'", "'\''"
-    wt -w 0 new-tab --title work "$portside" --host $Target --agent $Agent `; split-pane -V --size 0.65 ssh -t $Target "bash -lc '$agentEsc'"
+    wt -w 0 new-tab --title work "$portside" --host $Target --agent $Agent `; split-pane -V --size $splitSize ssh -t $Target "bash -lc '$agentEsc'"
 } else {
     $dir = if ($Target) { $Target } else { (Get-Location).Path }
     if (-not (Test-Path $dir)) { Write-Error "no such directory or ssh host: $Target" }
     if ($Agent -eq "claude") {
         if (Get-Command claude -ErrorAction SilentlyContinue) {
-            wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size 0.65 -d $dir claude
+            wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size $splitSize -d $dir claude
         } elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
-            wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size 0.65 -d $dir wsl -e claude
+            wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size $splitSize -d $dir wsl -e claude
         } else {
             Write-Error "claude not found on PATH (install Claude Code, or WSL with claude inside)"
         }
     } else {
-        wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size 0.65 -d $dir $Agent
+        wt -w 0 new-tab --title work -d $dir "$portside" --agent $Agent `; split-pane -V --size $splitSize -d $dir $Agent
     }
 }
