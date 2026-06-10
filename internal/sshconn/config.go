@@ -3,13 +3,14 @@
 package sshconn
 
 import (
+	"errors"
 	"net"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 
-	ssh_config "github.com/kevinburke/ssh_config"
+	"github.com/kevinburke/ssh_config"
 )
 
 // Params holds everything needed to dial a host.
@@ -37,7 +38,7 @@ func DefaultConfigPath() string {
 func LoadConfig(path string) (*Resolver, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return &Resolver{}, nil
 		}
 		return nil, err
@@ -51,6 +52,7 @@ func LoadConfig(path string) (*Resolver, error) {
 }
 
 // Hosts returns concrete host aliases (wildcard patterns are skipped).
+// If a Host stanza declares multiple patterns, each non-wildcard pattern appears as its own entry.
 func (r *Resolver) Hosts() []string {
 	if r.cfg == nil {
 		return nil

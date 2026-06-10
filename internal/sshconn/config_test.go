@@ -1,6 +1,9 @@
 package sshconn
 
 import (
+	"os"
+	"os/user"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -51,6 +54,9 @@ func TestResolveUnknownAliasFallsBackToAlias(t *testing.T) {
 	if p.Addr != "unknown.example.org:22" {
 		t.Fatalf("wrong addr: %s", p.Addr)
 	}
+	if p.User != "fallback" { // Host * still applies to unknown aliases
+		t.Fatalf("wrong user: %s", p.User)
+	}
 }
 
 func TestLoadConfigMissingFile(t *testing.T) {
@@ -60,5 +66,25 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	}
 	if hosts := r.Hosts(); hosts != nil {
 		t.Fatalf("want nil hosts, got %v", hosts)
+	}
+}
+
+func TestResolveUserDefaultsToOSUser(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	if err := os.WriteFile(path, []byte("Host bare\n    HostName bare.example.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := user.Current()
+	if err != nil {
+		t.Skip("cannot determine current user")
+	}
+	p := r.Resolve("bare")
+	if p.User != u.Username {
+		t.Fatalf("want OS user %q, got %q", u.Username, p.User)
 	}
 }
