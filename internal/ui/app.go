@@ -82,6 +82,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width, a.height = msg.Width, msg.Height
 		a.ex.width, a.ex.height = msg.Width, msg.Height-1
 		a.pt.height = msg.Height - 1
+		a.pt.width = msg.Width
+		// Keep textinput widths in sync so they don't overflow narrow panes.
+		inputW := max(10, msg.Width-12)
+		a.ex.pathInput.Width = inputW
+		a.ex.destInput.Width = inputW
+		a.ex.passInput.Width = inputW
+		a.ex.opInput.Width = inputW
+		a.ex.jumpInput.Width = inputW
 		return a, nil
 
 	case statusMsg:
@@ -196,7 +204,10 @@ func (a App) View() string {
 	if a.statusErr {
 		style = statusErrStyle
 	}
-	status := style.Width(max(a.width, 1)).Render(" " + a.status)
+	// Truncate the status text before styling so the background fill still
+	// covers the full width but the text never wraps.
+	statusText := truncRight(" "+a.status, max(a.width, 1))
+	status := style.Width(max(a.width, 1)).Render(statusText)
 
 	if gap := a.height - 1 - lipgloss.Height(body); gap > 0 {
 		body += strings.Repeat("\n", gap)

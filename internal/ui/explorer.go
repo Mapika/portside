@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Mapika/portside/internal/fs"
 	"github.com/Mapika/portside/internal/sshconn"
@@ -661,16 +662,26 @@ func (e explorer) handleMouse(msg tea.MouseMsg) (explorer, tea.Cmd) {
 
 func (e explorer) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(" "+e.fsys.Name()+" · "+e.rootPath) + "\n")
+
+	// Title: " <name> · <path>" — left-truncate the path portion when narrow.
+	name := e.fsys.Name()
+	prefix := " " + name + " · "
+	prefixW := lipgloss.Width(prefix)
+	pathW := e.width - prefixW // columns available for the path (0 = unconstrained)
+	titleText := prefix + truncPathLeft(e.rootPath, pathW)
+	b.WriteString(titleStyle.Render(titleText) + "\n")
 
 	if e.mode == modeHosts {
-		b.WriteString(dimStyle.Render(" select host · enter connect · esc cancel") + "\n")
+		hint := " select host · enter connect · esc cancel"
+		b.WriteString(dimStyle.Render(truncRight(hint, e.width-1)) + "\n")
 		items := append([]string{"local"}, e.hosts...)
 		for i, it := range items {
 			if i == e.hostCursor {
-				b.WriteString(cursorStyle.Render(" ▶ "+it) + "\n")
+				line := " ▶ " + truncRight(it, e.width-4)
+				b.WriteString(cursorStyle.Render(line) + "\n")
 			} else {
-				b.WriteString("   " + it + "\n")
+				line := "   " + truncRight(it, e.width-4)
+				b.WriteString(line + "\n")
 			}
 		}
 		return b.String()
@@ -728,7 +739,21 @@ func (e explorer) renderNode(n *node, selected bool) string {
 		fileMarker = "● "
 	}
 
-	line := " " + indent + fileMarker + n.entry.Name
+	// Truncate the name so the full line fits within e.width.
+	// Prefix is " " + indent + fileMarker. When e.width==0 no truncation.
+	name := n.entry.Name
+	if e.width > 0 {
+		prefixW := lipgloss.Width(" " + indent + fileMarker)
+		nameW := e.width - prefixW
+		if nameW < 1 {
+			// The prefix alone is wider than the pane — fall back to one visible cell.
+			full := " " + indent + fileMarker + name
+			return truncRight(full, e.width)
+		}
+		name = truncRight(name, nameW)
+	}
+
+	line := " " + indent + fileMarker + name
 	gitKey := filepath.ToSlash(n.entry.Path) // gitStates keys are slash-normalized
 
 	switch {

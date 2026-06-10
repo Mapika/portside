@@ -19,6 +19,7 @@ type ports struct {
 	remoteIn  textinput.Model
 	focus     int // 0 = local input, 1 = remote input
 	height    int
+	width     int
 }
 
 func newPorts() ports {
@@ -114,16 +115,17 @@ func (p ports) Update(msg tea.Msg) (ports, tea.Cmd) {
 
 func (p ports) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(" PORTS") + "\n")
+	b.WriteString(titleStyle.Render(truncRight(" PORTS", p.width)) + "\n")
 
 	if p.forwarder == nil {
-		b.WriteString(dimStyle.Render(" no connection — press Ctrl+H in the explorer to connect to a host") + "\n")
+		hint := " no connection — press Ctrl+H in the explorer to connect to a host"
+		b.WriteString(dimStyle.Render(truncRight(hint, p.width)) + "\n")
 		return b.String()
 	}
 
 	fws := p.forwarder.List()
 	if len(fws) == 0 {
-		b.WriteString(dimStyle.Render(" no forwards — press a to add one") + "\n")
+		b.WriteString(dimStyle.Render(truncRight(" no forwards — press a to add one", p.width)) + "\n")
 	}
 	for i, fw := range fws {
 		state := "open"
@@ -132,16 +134,18 @@ func (p ports) View() string {
 		}
 		line := fmt.Sprintf("  localhost:%d → remote:%d  [%s]", fw.Local, fw.Remote, state)
 		if i == p.cursor {
-			line = cursorStyle.Render(" ▶" + line[2:])
+			sel := " ▶" + line[2:]
+			b.WriteString(cursorStyle.Render(truncRight(sel, p.width)) + "\n")
+		} else {
+			b.WriteString(truncRight(line, p.width) + "\n")
 		}
-		b.WriteString(line + "\n")
 	}
 
 	if p.adding {
 		b.WriteString("\n " + p.localIn.View() + "\n " + p.remoteIn.View() + "\n")
-		b.WriteString(dimStyle.Render(" tab switch · enter confirm · esc cancel"))
+		b.WriteString(dimStyle.Render(truncRight(" tab switch · enter confirm · esc cancel", p.width)))
 	} else {
-		b.WriteString("\n" + dimStyle.Render(" a add · x stop · ctrl+p explorer"))
+		b.WriteString("\n" + dimStyle.Render(truncRight(" a add · x stop · ctrl+p explorer", p.width)))
 	}
 	return b.String()
 }
