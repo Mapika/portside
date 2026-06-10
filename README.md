@@ -12,6 +12,19 @@ curl -fsSL https://raw.githubusercontent.com/Mapika/portside/main/install.sh | s
 
 Requires tmux and (for the right pane) Claude Code.
 
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/Mapika/portside/main/install.ps1 | iex
+```
+
+Requires [Windows Terminal](https://aka.ms/terminal). `work <host>` opens
+portside (left) + Claude Code on that server via ssh (right). Uses your
+Windows `~/.ssh/config` and the Windows OpenSSH agent
+(`Get-Service ssh-agent | Set-Service -StartupType Automatic; Start-Service ssh-agent`).
+Downloads land in `C:\Users\<you>\Downloads`. Note: no session reattach on
+Windows (Windows Terminal has no tmux-style attach).
+
 ## Usage
 
 ```sh
